@@ -637,6 +637,9 @@ def main(
         f"Subtitle saved at {subtitle_path} (Processed for {humanize.time.naturaldelta(duration)})"
     )
 
+    # 7. Cleanup audio file
+    Path(audio_path).unlink()
+
 
 if __name__ == "__main__":
     main()
