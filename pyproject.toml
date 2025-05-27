@@ -1,0 +1,14 @@
+[project]
+name = "subtitle-sync"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.2.1",
+    "ffmpeg-python>=0.2.0",
+    "google-genai>=1.16.1",
+    "humanize>=4.12.3",
+    "pysubs2>=1.8.0",
+    "tenacity>=9.1.2",
+]
