@@ -13,7 +13,7 @@ import time
 from google import genai
 from google.genai import types
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List
 from pysubs2 import SSAFile, SSAEvent
 from tenacity import retry, stop_after_attempt
