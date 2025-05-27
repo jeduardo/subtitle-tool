@@ -20,15 +20,17 @@ This utility uses Google Gemini to sync subtitles to videos.
 Export the API key for Gemini to the environment variable `GEMINI_API_KEY`
 **or** specify it in the command line with the flag `--api-key`.
 
-```shell
-uv run subtitle-tool --video myvideo.avi --subtitle out-of-sync.srt
-```
-
 ## Installation
 
 ```shell
 # Leaving it possible to change the local code
 uv install tool -e .
+```
+
+## Usage
+
+```shell
+subtitle-tool --video myvideo.avi --subtitle out-of-sync.srt
 ```
 
 ## References
