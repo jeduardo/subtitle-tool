@@ -1,7 +1,8 @@
 [project]
-name = "subtitle-sync"
+name = "subtitle-tool"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tool for generating or synchronizing subtitles with help from Google Gemini AI."
+authors = [{ name = "J. Eduardo", email = "j.eduardo@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -12,3 +13,10 @@ dependencies = [
     "pysubs2>=1.8.0",
     "tenacity>=9.1.2",
 ]
+
+[project.scripts]
+subtitle-tool = "subtitle_tool.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

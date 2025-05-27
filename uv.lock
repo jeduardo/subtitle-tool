@@ -303,9 +303,9 @@ wheels = [
 ]
 
 [[package]]
-name = "subtitle-sync"
+name = "subtitle-tool"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "ffmpeg-python" },

@@ -1,4 +1,4 @@
-# Subtitle sync
+# Subtitle tool
 
 This utility uses Google Gemini to sync subtitles to videos.
 
@@ -14,3 +14,23 @@ This utility uses Google Gemini to sync subtitles to videos.
 3. Backup the existing subtitle
 4. Rebalance the generated subtitle to limit the words per screen,
 5. Save the adjusted subtitle.
+
+## Dependencies
+
+Export the API key for Gemini to the environment variable `GEMINI_API_KEY`
+**or** specify it in the command line with the flag `--api-key`.
+
+```shell
+uv run subtitle-tool --video myvideo.avi --subtitle out-of-sync.srt
+```
+
+## Installation
+
+```shell
+# Leaving it possible to change the local code
+uv install tool -e .
+```
+
+## References
+
+- [Subtle Recommended Quality Criteria for Subtitling](https://subtle-subtitlers.org.uk/wp-content/uploads/2023/01/SUBTLE-Recommended-Quality-Criteria-for-Subtitling.pdf), © SUBTLE 2023: used to guide the AI in terms of subtitle quality.
