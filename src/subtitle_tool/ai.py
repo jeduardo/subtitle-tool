@@ -1,5 +1,6 @@
-import io
+import json
 import logging
+import re
 import tempfile
 
 from contextlib import contextmanager
@@ -7,12 +8,118 @@ from dataclasses import dataclass
 from google import genai
 from google.genai import types
 from pydub import AudioSegment
-from pysubs2 import SSAFile
-from subtitle_tool.subtitles import SubtitleEvent, subtitles_to_dict, validate_subtitles
-from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
-from warnings import deprecated
+from subtitle_tool.subtitles import SubtitleEvent, validate_subtitles
+from tenacity import before_sleep_log, retry, stop_after_attempt, retry_if_exception
 
 logger = logging.getLogger("subtitle_tool.ai")
+
+
+def is_gemini_rate_limit_error(exception):
+    """
+    Check if the exception is a Gemini rate limit error (429 RESOURCE_EXHAUSTED).
+
+    Args:
+        exception: Any exception object
+
+    Returns:
+        bool: True if it's a Gemini rate limit error
+    """
+    error_str = str(exception)
+    return "429 RESOURCE_EXHAUSTED" in error_str
+
+
+def extract_retry_delay_from_message(exception):
+    """
+    Extract retry delay from exception message by parsing the JSON-like structure.
+
+    Args:
+        exception: The exception object
+
+    Returns:
+        float: Retry delay in seconds, defaults to 60 if not found
+    """
+    try:
+        error_str = str(exception)
+
+        # Method 1: Try to extract the JSON part after the status code
+        # Look for the JSON structure starting after "429 RESOURCE_EXHAUSTED. "
+        json_match = re.search(
+            r"429 RESOURCE_EXHAUSTED\.\s*(\{.*\})\.?$", error_str, re.DOTALL
+        )
+        if json_match:
+            json_str = json_match.group(1)
+            try:
+                error_data = json.loads(json_str)
+                # Navigate through the JSON structure to find retryDelay
+                if "error" in error_data and "details" in error_data["error"]:
+                    for detail in error_data["error"]["details"]:
+                        if (
+                            detail.get("@type")
+                            == "type.googleapis.com/google.rpc.RetryInfo"
+                        ):
+                            retry_delay = detail.get("retryDelay", "")
+                            if retry_delay.endswith("s"):
+                                return float(retry_delay[:-1])
+            except json.JSONDecodeError:
+                pass
+
+        # Method 2: Regex fallback - look for retryDelay pattern directly
+        patterns = [
+            r"'retryDelay':\s*'(\d+)s'",
+            r'"retryDelay":\s*"(\d+)s"',
+            r'retryDelay["\']:\s*["\'](\d+)s["\']',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, error_str)
+            if match:
+                return float(match.group(1))
+
+    except Exception as e:
+        logger.error(f"Warning: Could not parse retry delay from exception: {e}")
+
+    # Default fallback delay
+    return 5.0
+
+
+def gemini_wait_handler(retry_state):
+    """
+    Custom wait handler for Gemini rate limit exceptions.
+    Extracts the retry delay from the exception message and sleeps for that duration.
+
+    Args:
+        retry_state: The retry state object from tenacity
+
+    Returns:
+        float: The sleep duration
+    """
+    if retry_state.outcome and retry_state.outcome.failed:
+        exception = retry_state.outcome.exception()
+
+        # Check if it's a Gemini rate limit error
+        if is_gemini_rate_limit_error(exception):
+            delay = extract_retry_delay_from_message(exception)
+            logger.debug(
+                f"Gemini rate limit hit, sleeping for {delay} seconds as suggested by API"
+            )
+            return delay
+
+    # Default delay for other cases
+    return 5.0
+
+
+# Custom retry condition
+def should_retry_gemini_error(exception):
+    """
+    Determine if we should retry based on the exception.
+
+    Args:
+        exception: The exception that occurred
+
+    Returns:
+        bool: True if we should retry
+    """
+    return is_gemini_rate_limit_error(exception)
 
 
 @dataclass
@@ -154,15 +261,15 @@ class Gemini(object):
         return subtitle_events
 
     @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=300),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
+        retry=retry_if_exception(should_retry_gemini_error),
+        wait=gemini_wait_handler,
+        stop=stop_after_attempt(30),
     )
     def _generate_subtitles(self, file_ref) -> list[SubtitleEvent]:
         """
         Generate subtitles for the file uploaded onto Gemini servers.
-        Given that sometimes Gemini will not generate a valid output, or
-        that some limits might be surpassed, this function will retry
-        for up to 5 minutes with exponential backoff.
+        It will retrieve the wait time from Gemini rate limits and run
+        again, up to 30 times.
 
         Args:
             file_id (str): identifier of uploaded file

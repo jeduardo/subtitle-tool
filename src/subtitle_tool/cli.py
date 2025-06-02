@@ -46,17 +46,16 @@ def main(
 ) -> None:
     start = time.time()
     executor = None
+    gracefully_completed = False
 
     def cleanup():
-        click.echo("\nForce killing all tasks...")
-        if executor:
-            # Don't wait for stuck tasks - just shutdown immediately
-            executor.shutdown(wait=False, cancel_futures=True)
+        if not gracefully_completed:
+            click.echo("\nForce killing all tasks...")
+            if executor:
+                # Don't wait for stuck tasks - just shutdown immediately
+                executor.shutdown(wait=False, cancel_futures=True)
 
-        # Nuclear option: kill the entire process after brief delay
-        click.echo("Force exit in 1 second...")
-        time.sleep(1)
-        os._exit(-1)
+            os._exit(-1)
 
     # Register cleanup function
     ctx.call_on_close(cleanup)
@@ -126,6 +125,7 @@ def main(
     click.echo(
         f"Subtitle saved at {subtitle_path} (Processed for {naturaldelta(duration)})"
     )
+    gracefully_completed = True
 
 
 if __name__ == "__main__":
