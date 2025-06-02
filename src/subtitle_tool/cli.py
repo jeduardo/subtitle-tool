@@ -4,6 +4,7 @@ import click
 import logging
 import shutil
 import time
+import os
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -35,13 +36,30 @@ logging.getLogger("subtitle_tool").setLevel(logging.DEBUG)
 )
 @click.option("--video", help="Path to video file")
 @click.option("--audio", help="Path to audio file")
+@click.pass_context
 def main(
+    ctx: click.Context,
     api_key: str,
     ai_model: str,
     video: str,
     audio: str,
 ) -> None:
     start = time.time()
+    executor = None
+
+    def cleanup():
+        click.echo("\nForce killing all tasks...")
+        if executor:
+            # Don't wait for stuck tasks - just shutdown immediately
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        # Nuclear option: kill the entire process after brief delay
+        click.echo("Force exit in 1 second...")
+        time.sleep(1)
+        os._exit(-1)
+
+    # Register cleanup function
+    ctx.call_on_close(cleanup)
 
     if not api_key:
         raise click.ClickException(
@@ -75,8 +93,8 @@ def main(
     click.echo(f"Generating subtitles with {ai_model}...")
 
     gemini = Gemini(api_key=api_key, model_name=ai_model)
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        subtitle_groups = list(executor.map(gemini.transcribe_audio, segments))
+    executor = ThreadPoolExecutor(max_workers=5)
+    subtitle_groups = list(executor.map(gemini.transcribe_audio, segments))
 
     # 4. Join all subtitles into a single one
     segment_durations = [segment.duration_seconds * 1000 for segment in segments]
