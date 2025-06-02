@@ -126,22 +126,32 @@ class Gemini(object):
                 self.client.files.delete(name=f"{ref.name}")
                 logger.debug(f"Removed temporary file upload {ref.name}")
 
-    def audio_to_subtitles(self, audio_segment: AudioSegment) -> list[SubtitleEvent]:
+    @retry(
+        stop=stop_after_attempt(50),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
+    def _audio_to_subtitles(
+        self, audio_segment: AudioSegment, file_ref
+    ) -> list[SubtitleEvent]:
         """
         Generate subtitles for an audio segment.
-        This function will upload the file to Gemini servers,
-        removing it after processing.
+
+        This function will call Gemini to generate subtitles and will
+        validate the result before returning. If the subtitle is invalid,
+        it will ask Gemini to recreate the subtitles up to 50 times.
 
         Args:
             audio_segment (AudioSegment): segment to be transcribed
+            file_ref (types.File): reference to uploaded file
 
         Returns:
             list[SubtitleEvent]: subtitles extracted from audio track
 
         """
-
-        with self.upload_audio(audio_segment) as file_ref:  # type: ignore
-            return self._generate_subtitles(file_ref)
+        subtitle_events = self._generate_subtitles(file_ref)
+        validate_subtitles(subtitle_events, audio_segment.duration_seconds)
+        logger.debug("Valid subtitles generated for segment")
+        return subtitle_events
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=300),
@@ -204,25 +214,20 @@ class Gemini(object):
 
         return response.parsed  # type: ignore
 
-    @retry(
-        stop=stop_after_attempt(50),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
-    )
-    def transcribe_audio(self, segment: AudioSegment) -> list[SubtitleEvent]:
+    def transcribe_audio(self, audio_segment: AudioSegment) -> list[SubtitleEvent]:
         """
         Transcribe the audio of a given segment into subtitle.
-        This function will call Gemini to generate subtitles and will
-        validate the result before returning. If the subtitle is invalid,
-        it will ask Gemini to recreate the subtitles up to 50 times.
+
+        This function will upload the audio file to Gemini servers,
+        removing it after processing.
 
         Args:
-            segment (AudioSegment): segment to be transcribed
+            audio_segment (AudioSegment): segment to be transcribed
 
         Return:
-            list[SubtitleEvent: list of subtitles
+            list[SubtitleEvent: list of validated subtitles
         """
-        subtitle_events = self.audio_to_subtitles(segment)
-        validate_subtitles(subtitle_events, segment.duration_seconds)
-        logger.debug("Valid subtitles generated for segment")
+        with self.upload_audio(audio_segment) as file_ref:  # type: ignore
+            subtitle_events = self._audio_to_subtitles(audio_segment, file_ref)
 
         return subtitle_events

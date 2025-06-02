@@ -35,15 +35,11 @@ logging.getLogger("subtitle_tool").setLevel(logging.DEBUG)
 )
 @click.option("--video", help="Path to video file")
 @click.option("--audio", help="Path to audio file")
-@click.option("--subtitle", help="Path to subtitle file")
 def main(
     api_key: str,
     ai_model: str,
     video: str,
     audio: str,
-    subtitle: str,
-    # max_words_per_screen: int,
-    # min_duration: int,
 ) -> None:
     start = time.time()
 
@@ -54,6 +50,11 @@ def main(
 
     if not audio and not video or audio and video:
         raise click.ClickException(f"Either --video or --audio need to be specified")
+
+    if video:
+        click.echo(f"Generating subtitle for {video}")
+    if audio:
+        click.echo(f"Generating subtitle for {audio}")
 
     # 1. Load audio stream from either video or audio file
     try:
@@ -66,6 +67,7 @@ def main(
     click.echo(f"Audio loaded ({precisedelta(int(audio_stream.duration_seconds))})")
 
     # 2. Split the audio stream into 30-second segments
+    click.echo("Segmenting audio stream...")
     segments = split_audio(audio_stream, segment_length=30)
     click.echo(f"Audio split into {len(segments)} segments")
 
@@ -75,9 +77,6 @@ def main(
     gemini = Gemini(api_key=api_key, model_name=ai_model)
     with ThreadPoolExecutor(max_workers=5) as executor:
         subtitle_groups = list(executor.map(gemini.transcribe_audio, segments))
-    # subtitle_groups = []
-    # for segment in segments:
-    #     subtitle_groups.append(gemini.transcribe_audio(segment))
 
     # 4. Join all subtitles into a single one
     segment_durations = [segment.duration_seconds * 1000 for segment in segments]
@@ -88,9 +87,11 @@ def main(
 
     # 6. Backup existing subtitle (if exists)
     if video:
-        subtitle_path = Path(f"{Path(video).stem}.srt")
+        media_path = Path(video)
     else:
-        subtitle_path = Path(f"{Path(audio).stem}.srt")
+        media_path = Path(audio)
+
+    subtitle_path = Path(f"{media_path.parent}/{media_path.stem}.srt")
 
     if subtitle_path.exists():
         dst = f"{subtitle_path}.bak"

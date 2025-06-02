@@ -42,6 +42,7 @@ def extract_audio(video_path: str) -> AudioSegment:
 
     audio_stream = audio_streams[0]
     audio_codec = audio_stream.get("codec_name", "")
+    logger.info(f"Audio stream detected: {audio_codec}")
 
     # Extract audio
     if audio_codec in CODEC_TO_FORMAT:
