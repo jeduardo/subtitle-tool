@@ -5,6 +5,7 @@ import logging
 import shutil
 import time
 import os
+import sys
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -19,8 +20,38 @@ from pydub import AudioSegment
 API_KEY_NAME = "GEMINI_API_KEY"
 AI_DEFAULT_MODEL = "gemini-2.5-flash-preview-05-20"
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logging.getLogger("subtitle_tool").setLevel(logging.DEBUG)
+
+def setup_logging(verbose=False, debug=False):
+    # Set base level - INFO normally, DEBUG if either flag is set
+    base_level = logging.DEBUG if (verbose or debug) else logging.INFO
+
+    # Create formatter
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S"
+    )
+
+    # Setup handler
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+
+    # Setup root logger
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+
+    if debug:
+        # Debug flag: enable DEBUG for everything (root level)
+        root_logger.setLevel(logging.DEBUG)
+    elif verbose:
+        # Verbose flag: enable DEBUG only for subtitle_tool loggers
+        root_logger.setLevel(logging.ERROR)
+
+        # Set DEBUG level for all subtitle_tool loggers
+        subtitle_logger = logging.getLogger("subtitle_tool")
+        subtitle_logger.setLevel(logging.DEBUG)
+    else:
+        # Normal operation
+        root_logger.setLevel(logging.ERROR)
 
 
 @click.command()
@@ -36,6 +67,13 @@ logging.getLogger("subtitle_tool").setLevel(logging.DEBUG)
 )
 @click.option("--video", help="Path to video file")
 @click.option("--audio", help="Path to audio file")
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable debug logging for subtitle_tool modules",
+)
+@click.option("--debug", is_flag=True, help="Enable debug logging for all modules")
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -43,13 +81,17 @@ def main(
     ai_model: str,
     video: str,
     audio: str,
+    verbose: bool,
+    debug: bool,
 ) -> None:
+    setup_logging(debug=debug, verbose=verbose)
+
     start = time.time()
     executor = None
-    gracefully_completed = False
+    completed = False
 
     def cleanup():
-        if not gracefully_completed:
+        if not completed:
             click.echo("\nForce killing all tasks...")
             if executor:
                 # Don't wait for stuck tasks - just shutdown immediately
@@ -68,17 +110,11 @@ def main(
     if not audio and not video or audio and video:
         raise click.ClickException(f"Either --video or --audio need to be specified")
 
-    if video:
-        click.echo(f"Generating subtitle for {video}")
-    if audio:
-        click.echo(f"Generating subtitle for {audio}")
+    click.echo(f"Generating subtitle for {video if video else audio}")
 
     # 1. Load audio stream from either video or audio file
     try:
-        if video:
-            audio_stream = extract_audio(video)
-        else:
-            audio_stream = AudioSegment.from_file(audio)
+        audio_stream = extract_audio(video) if video else AudioSegment.from_file(audio)
     except Exception as e:
         raise click.ClickException(f"Error loading audio stream: {e}")
     click.echo(f"Audio loaded ({precisedelta(int(audio_stream.duration_seconds))})")
@@ -125,7 +161,7 @@ def main(
     click.echo(
         f"Subtitle saved at {subtitle_path} (Processed for {naturaldelta(duration)})"
     )
-    gracefully_completed = True
+    completed = True
 
 
 if __name__ == "__main__":
