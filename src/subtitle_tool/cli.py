@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from humanize.time import naturaldelta, precisedelta
 from pathlib import Path
-from subtitle_tool.ai import Gemini
+from subtitle_tool.ai import AISubtitler
 from subtitle_tool.audio import split_audio
 from subtitle_tool.subtitles import events_to_subtitles, merge_subtitle_events
 from subtitle_tool.video import extract_audio
@@ -74,6 +74,7 @@ def setup_logging(verbose=False, debug=False):
     help="Enable debug logging for subtitle_tool modules",
 )
 @click.option("--debug", is_flag=True, help="Enable debug logging for all modules")
+@click.option("--keep_temp_files", is_flag=True, help="Do not erase temporary files")
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -83,6 +84,7 @@ def main(
     audio: str,
     verbose: bool,
     debug: bool,
+    keep_temp_files: bool = False,
 ) -> None:
     setup_logging(debug=debug, verbose=verbose)
 
@@ -127,7 +129,9 @@ def main(
     # 3. Ask Gemini to create subtitles
     click.echo(f"Generating subtitles with {ai_model}...")
 
-    gemini = Gemini(api_key=api_key, model_name=ai_model)
+    gemini = AISubtitler(
+        api_key=api_key, model_name=ai_model, delete_temp_files=not keep_temp_files
+    )
     executor = ThreadPoolExecutor(max_workers=5)
     subtitle_groups = list(executor.map(gemini.transcribe_audio, segments))
 

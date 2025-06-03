@@ -1,12 +1,11 @@
-import json
 import logging
-import re
 import tempfile
 
 from contextlib import contextmanager
 from dataclasses import dataclass
 from google import genai
 from google.genai import types
+from google.genai.errors import ClientError
 from pydub import AudioSegment
 from subtitle_tool.subtitles import SubtitleEvent, validate_subtitles
 from tenacity import before_sleep_log, retry, stop_after_attempt, retry_if_exception
@@ -14,9 +13,9 @@ from tenacity import before_sleep_log, retry, stop_after_attempt, retry_if_excep
 logger = logging.getLogger("subtitle_tool.ai")
 
 
-def is_gemini_rate_limit_error(exception):
+def is_rate_limit_exception(exception):
     """
-    Check if the exception is a Gemini rate limit error (429 RESOURCE_EXHAUSTED).
+    Check if the exception is a Gemini rate limit error (status 429).
 
     Args:
         exception: Any exception object
@@ -24,8 +23,9 @@ def is_gemini_rate_limit_error(exception):
     Returns:
         bool: True if it's a Gemini rate limit error
     """
-    error_str = str(exception)
-    return "429 RESOURCE_EXHAUSTED" in error_str
+    if isinstance(exception, ClientError):
+        return exception.code == 429
+    return False
 
 
 def extract_retry_delay_from_message(exception):
@@ -36,53 +36,27 @@ def extract_retry_delay_from_message(exception):
         exception: The exception object
 
     Returns:
-        float: Retry delay in seconds, defaults to 60 if not found
+        float: Retry delay in seconds, defaults to 5 if not found
     """
     try:
-        error_str = str(exception)
-
-        # Method 1: Try to extract the JSON part after the status code
-        # Look for the JSON structure starting after "429 RESOURCE_EXHAUSTED. "
-        json_match = re.search(
-            r"429 RESOURCE_EXHAUSTED\.\s*(\{.*\})\.?$", error_str, re.DOTALL
-        )
-        if json_match:
-            json_str = json_match.group(1)
-            try:
-                error_data = json.loads(json_str)
-                # Navigate through the JSON structure to find retryDelay
-                if "error" in error_data and "details" in error_data["error"]:
-                    for detail in error_data["error"]["details"]:
-                        if (
-                            detail.get("@type")
-                            == "type.googleapis.com/google.rpc.RetryInfo"
-                        ):
-                            retry_delay = detail.get("retryDelay", "")
-                            if retry_delay.endswith("s"):
-                                return float(retry_delay[:-1])
-            except json.JSONDecodeError:
-                pass
-
-        # Method 2: Regex fallback - look for retryDelay pattern directly
-        patterns = [
-            r"'retryDelay':\s*'(\d+)s'",
-            r'"retryDelay":\s*"(\d+)s"',
-            r'retryDelay["\']:\s*["\'](\d+)s["\']',
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, error_str)
-            if match:
-                return float(match.group(1))
-
+        if isinstance(exception, ClientError):
+            if is_rate_limit_exception(exception):
+                for detail in exception.details["error"]["details"]:
+                    if (
+                        detail.get("@type")
+                        == "type.googleapis.com/google.rpc.RetryInfo"
+                    ):
+                        retry_delay = detail.get("retryDelay", "")
+                        if retry_delay.endswith("s"):
+                            return float(retry_delay[:-1])
     except Exception as e:
-        logger.error(f"Warning: Could not parse retry delay from exception: {e}")
+        logger.warning(f"Could not parse retry delay from exception: {e}")
 
     # Default fallback delay
     return 5.0
 
 
-def gemini_wait_handler(retry_state):
+def ai_call_wait_handler(retry_state):
     """
     Custom wait handler for Gemini rate limit exceptions.
     Extracts the retry delay from the exception message and sleeps for that duration.
@@ -96,11 +70,10 @@ def gemini_wait_handler(retry_state):
     if retry_state.outcome and retry_state.outcome.failed:
         exception = retry_state.outcome.exception()
 
-        # Check if it's a Gemini rate limit error
-        if is_gemini_rate_limit_error(exception):
+        if is_rate_limit_exception(exception):
             delay = extract_retry_delay_from_message(exception)
             logger.debug(
-                f"Gemini rate limit hit, sleeping for {delay} seconds as suggested by API"
+                f"Rate limit hit, sleeping for {delay} seconds as suggested by API"
             )
             return delay
 
@@ -108,8 +81,7 @@ def gemini_wait_handler(retry_state):
     return 5.0
 
 
-# Custom retry condition
-def should_retry_gemini_error(exception):
+def should_retry_ai_call(exception):
     """
     Determine if we should retry based on the exception.
 
@@ -119,13 +91,24 @@ def should_retry_gemini_error(exception):
     Returns:
         bool: True if we should retry
     """
-    return is_gemini_rate_limit_error(exception)
+    return is_rate_limit_exception(exception)
 
 
 @dataclass
-class Gemini(object):
+class AISubtitler(object):
+    """
+    AI Subtitler implementation using Gemini.
+
+    Args:
+        model_name (str): Gemini model to be used (mandatory)
+        api_key (str): Gemini API key (mandatory)
+        delete_temp_files (bool): whether any temporary files created should be deleted (default: True)
+        system_prompt (str): system prompt driving the model. There is a default prompt already provided, override only if necessary.
+    """
+
     model_name: str
     api_key: str
+    delete_temp_files: bool = True
     system_prompt: str = """
         You are a professional transcriber of audio clips into subtitles.
         You recognize which language is being spoken in the title and write the subtitle accordingly.
@@ -215,23 +198,29 @@ class Gemini(object):
         Returns:
             File: upload identifier
         """
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(
+            suffix=".mp3", delete=self.delete_temp_files
+        ) as temp_file:
             # Export AudioSegment to temporary file
             # AudioSegment will be loaded as RAW audio, so we can export it to
             # whatever format we want. We will choose MP3.
-            logger.debug(f"Temporary file created at {temp_file.name}")
+            logger.debug(
+                f"Temporary file created at {temp_file.name}. {"It will be deleted" if self.delete_temp_files else "It will not be deleted"}"
+            )
 
             segment.export(temp_file.name, format="mp3")
             logger.debug(f"Audio segment exported to {temp_file.name}")
 
             # Upload the temporary file (API will infer mime type from extension)
             ref = self.client.files.upload(file=temp_file.name)  # type: ignore
-            logger.debug(f"Temporary file uploaded as {ref.name}")
+            logger.debug(f"Temporary file {temp_file.name} uploaded as {ref.name}")
             try:
                 yield ref
             finally:
                 self.client.files.delete(name=f"{ref.name}")
-                logger.debug(f"Removed temporary file upload {ref.name}")
+                logger.debug(
+                    f"Removed temporary file {temp_file.name} upload {ref.name}"
+                )
 
     @retry(
         stop=stop_after_attempt(50),
@@ -261,8 +250,8 @@ class Gemini(object):
         return subtitle_events
 
     @retry(
-        retry=retry_if_exception(should_retry_gemini_error),
-        wait=gemini_wait_handler,
+        retry=retry_if_exception(should_retry_ai_call),
+        wait=ai_call_wait_handler,
         stop=stop_after_attempt(30),
     )
     def _generate_subtitles(self, file_ref) -> list[SubtitleEvent]:
