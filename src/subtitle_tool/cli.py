@@ -74,7 +74,7 @@ def setup_logging(verbose=False, debug=False):
     help="Enable debug logging for subtitle_tool modules",
 )
 @click.option("--debug", is_flag=True, help="Enable debug logging for all modules")
-@click.option("--keep_temp_files", is_flag=True, help="Do not erase temporary files")
+@click.option("--keep-temp-files", is_flag=True, help="Do not erase temporary files")
 @click.pass_context
 def main(
     ctx: click.Context,
