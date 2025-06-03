@@ -208,7 +208,7 @@ class AISubtitler(object):
                 f"Temporary file created at {temp_file.name}. It will {"be" if self.delete_temp_files else "not be"} removed."
             )
 
-            segment.export(temp_file.name, format="mp3")
+            segment.export(temp_file.name, format="wav")
             logger.debug(f"Audio segment exported to {temp_file.name}")
 
             # Upload the temporary file (API will infer mime type from extension)

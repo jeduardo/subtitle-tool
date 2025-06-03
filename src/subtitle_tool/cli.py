@@ -22,12 +22,10 @@ AI_DEFAULT_MODEL = "gemini-2.5-flash-preview-05-20"
 
 
 def setup_logging(verbose=False, debug=False):
-    # Set base level - INFO normally, DEBUG if either flag is set
-    base_level = logging.DEBUG if (verbose or debug) else logging.INFO
-
     # Create formatter
     formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S"
+        "%(asctime)s [%(levelname)s] %(name)s [%(threadName)s] %(filename)s:%(lineno)d:%(funcName)s(): %(message)s",
+        datefmt="%H:%M:%S",
     )
 
     # Setup handler
