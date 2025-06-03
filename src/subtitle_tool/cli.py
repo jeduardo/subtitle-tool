@@ -4,7 +4,6 @@ import click
 import logging
 import shutil
 import time
-import os
 import sys
 
 from concurrent.futures import ThreadPoolExecutor
@@ -92,12 +91,10 @@ def main(
 
     def cleanup():
         if not completed:
-            click.echo("\nForce killing all tasks...")
             if executor:
+                click.echo("\nForce killing all tasks...")
                 # Don't wait for stuck tasks - just shutdown immediately
                 executor.shutdown(wait=False, cancel_futures=True)
-
-            os._exit(-1)
 
     # Register cleanup function
     ctx.call_on_close(cleanup)
@@ -116,7 +113,7 @@ def main(
     media_path = Path(video) if video else Path(audio)
     if not media_path.exists():
         raise click.ClickException(f"{media_path} does not exist")
-    if not media_path.is_file()
+    if not media_path.is_file():
         raise click.ClickException(f"{media_path} is not a file")
 
     try:
