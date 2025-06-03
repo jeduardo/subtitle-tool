@@ -205,7 +205,7 @@ class AISubtitler(object):
             # AudioSegment will be loaded as RAW audio, so we can export it to
             # whatever format we want. We will choose MP3.
             logger.debug(
-                f"Temporary file created at {temp_file.name}. {"It will be deleted" if self.delete_temp_files else "It will not be deleted"}"
+                f"Temporary file created at {temp_file.name}. It will {"be" if self.delete_temp_files else "not be"} removed."
             )
 
             segment.export(temp_file.name, format="mp3")
