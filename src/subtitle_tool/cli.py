@@ -5,6 +5,7 @@ import logging
 import shutil
 import time
 import sys
+import os
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -95,6 +96,7 @@ def main(
                 click.echo("\nForce killing all tasks...")
                 # Don't wait for stuck tasks - just shutdown immediately
                 executor.shutdown(wait=False, cancel_futures=True)
+                os._exit(-1)
 
     # Register cleanup function
     ctx.call_on_close(cleanup)

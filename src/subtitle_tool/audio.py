@@ -44,7 +44,11 @@ def split_audio(
             logging.debug(
                 f"Adding chunk ({chunk_dur}) overflows the segment ({segment_dur})"
             )
-            segments.append(cur_segment)
+            # Only add segments to the list of segments if they have something in them.
+            # This covers the case when the initial segment extracted is longer than
+            # the minimum duration period.
+            if cur_segment.duration_seconds > 0:
+                segments.append(cur_segment)
             cur_segment = chunk
             logger.debug(f"Most recent segment is new chunk ({chunk_dur})")
     # Add the cur_segment to the list to complete the pass
