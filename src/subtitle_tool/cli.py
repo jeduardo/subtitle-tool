@@ -113,6 +113,12 @@ def main(
     click.echo(f"Generating subtitle for {video if video else audio}")
 
     # 1. Load audio stream from either video or audio file
+    media_path = Path(video) if video else Path(audio)
+    if not media_path.exists():
+        raise click.ClickException(f"{media_path} does not exist")
+    if not media_path.is_file()
+        raise click.ClickException(f"{media_path} is not a file")
+
     try:
         audio_stream = extract_audio(video) if video else AudioSegment.from_file(audio)
     except Exception as e:
@@ -141,11 +147,6 @@ def main(
     subtitles = events_to_subtitles(subtitle_events)
 
     # 6. Backup existing subtitle (if exists)
-    if video:
-        media_path = Path(video)
-    else:
-        media_path = Path(audio)
-
     subtitle_path = Path(f"{media_path.parent}/{media_path.stem}.srt")
 
     if subtitle_path.exists():
