@@ -4,18 +4,6 @@ import logging
 
 from pydub import AudioSegment
 
-# Mapping only the formats supported natively by Gemini
-CODEC_TO_FORMAT = {
-    "pcm_s16le": "wav",
-    "pcm_s24le": "wav",
-    "pcm_s32le": "wav",
-    "pcm_f32le": "wav",
-    "mp3": "mp3",
-    "pcm_s16be": "aiff",
-    "aac": "aac",
-    "vorbis": "ogg",
-    "flac": "flac",
-}
 
 logger = logging.getLogger("subtitle_tool.video")
 
@@ -24,6 +12,8 @@ def extract_audio(video_path: str) -> AudioSegment:
     """
     Extract an audio stream from the video file.
     This method will always extract the main audio stream.
+    The audio stream will be extracted to wav as it's the closest from
+    the PCM format that pydubs uses internally.
 
     Args:
         video_path (str): path to the video file
@@ -45,22 +35,13 @@ def extract_audio(video_path: str) -> AudioSegment:
     logger.info(f"Audio stream detected: {audio_codec}")
 
     # Extract audio
-    if audio_codec in CODEC_TO_FORMAT:
-        audio_format = CODEC_TO_FORMAT[audio_codec]
-        logger.debug(f"Copying {audio_codec} stream directly to {audio_format}")
-        process = (
-            ffmpeg.input(video_path)
-            .output("pipe:", format=audio_format, acodec="copy")
-            .run_async(pipe_stdout=True, pipe_stderr=True)
-        )
-    else:
-        logger.debug(f"Converting {audio_codec} to mp3")
-        audio_format = "mp3"
-        process = (
-            ffmpeg.input(video_path)
-            .output("pipe:", format=audio_format, acodec="mp3")
-            .run_async(pipe_stdout=True, pipe_stderr=True)
-        )
+    logger.debug(f"Converting {audio_codec} to wav")
+    audio_format = "wav"
+    process = (
+        ffmpeg.input(video_path)
+        .output("pipe:", format=audio_format, acodec="pcm_s16le")
+        .run_async(pipe_stdout=True, pipe_stderr=True)
+    )
 
     out, err = process.communicate()
 

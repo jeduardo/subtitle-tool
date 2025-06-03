@@ -199,11 +199,10 @@ class AISubtitler(object):
             File: upload identifier
         """
         with tempfile.NamedTemporaryFile(
-            suffix=".mp3", delete=self.delete_temp_files
+            suffix=".wav", delete=self.delete_temp_files
         ) as temp_file:
             # Export AudioSegment to temporary file
-            # AudioSegment will be loaded as RAW audio, so we can export it to
-            # whatever format we want. We will choose MP3.
+            # I found out that wav files can avoid some unexplained 500 errors with Gemini.
             logger.debug(
                 f"Temporary file created at {temp_file.name}. It will {"be" if self.delete_temp_files else "not be"} removed."
             )
