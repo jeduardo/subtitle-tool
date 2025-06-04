@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from google import genai
 from google.genai import types
-from google.genai.errors import ClientError
+from google.genai.errors import ClientError, ServerError
 from pydub import AudioSegment
 from subtitle_tool.subtitles import (
     SubtitleEvent,
@@ -22,7 +22,7 @@ from tenacity import (
 
 logger = logging.getLogger("subtitle_tool.ai")
 
-DEFAULT_WAIT_TIME = 60.0
+DEFAULT_WAIT_TIME = 15.0
 
 
 def is_recoverable_exception(exception: ClientError) -> bool:
@@ -56,7 +56,7 @@ def extract_retry_delay_from_message(exception: ClientError) -> float:
         exception: The exception object
 
     Returns:
-        float: Retry delay in seconds, defaults to 60 if not found
+        float: Retry delay in seconds, defaults to 15 if not found
     """
     try:
         for detail in exception.details["error"]["details"]:
@@ -75,7 +75,7 @@ def wait_api_limit(retry_state) -> float:
     """
 
     Extracts the retry delay from rate limit messages.
-    From internal exceptions, it retries after 60 seconds.
+    From internal exceptions, it retries after 15 seconds.
 
     Args:
         retry_state: The retry state object from tenacity
@@ -86,12 +86,13 @@ def wait_api_limit(retry_state) -> float:
     if retry_state.outcome and retry_state.outcome.failed:
         exception = retry_state.outcome.exception()
 
-        if exception.code == 429:
-            delay = extract_retry_delay_from_message(exception)
-            logger.debug(
-                f"Rate limit hit, sleeping for {delay} seconds as suggested by API"
-            )
-            return delay
+        if isinstance(exception, ClientError):
+            if exception.code == 429:
+                delay = extract_retry_delay_from_message(exception)
+                logger.debug(
+                    f"Rate limit hit, sleeping for {delay} seconds as suggested by API"
+                )
+                return delay
 
     # Default delay for other cases
     return DEFAULT_WAIT_TIME
@@ -105,6 +106,7 @@ def retry_handler(exception) -> bool:
     - It's a 500 INTERNAL error, which Gemini sometimes issues and they recommend to retry.
     - It's a 429 rate limit error for quotas that are replenished by the minute.
     For all other issues, we will not ask tenacity to retry.
+    - It's a Server error
 
     Args:
         exception: The exception that occurred
@@ -116,7 +118,7 @@ def retry_handler(exception) -> bool:
         isinstance(exception, ClientError)
         and (exception.code == 429 or exception.code == 500)
         and is_recoverable_exception(exception)
-    )
+    ) or isinstance(exception, ServerError)
 
 
 @dataclass
