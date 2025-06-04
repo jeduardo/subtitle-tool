@@ -6,7 +6,7 @@ on:
 jobs:
   uv-example:
     name: python
-    runs-on: ghcr.io/jrottenberg/ffmpeg:ffmpeg-7.1-ubuntu2404
+    runs-on: jrottenberg/ffmpeg:ffmpeg-7.1-ubuntu2404
 
     steps:
       - uses: actions/checkout@v4
