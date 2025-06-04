@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   bump-version:
     runs-on: ubuntu-latest
@@ -14,6 +17,8 @@ jobs:
       # 1. Check out the repo
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       # 2. Install uv itself (pins to a known uv version)
       - name: Install uv
