@@ -47,6 +47,7 @@ def extract_audio(video_path: str) -> AudioSegment:
 
     # Check the return code instead of stderr content
     if process.returncode != 0:
+        logger.error(f"Extraction error with ffmpeg: {err.decode()}")
         raise Exception(f"Extraction error: {err.decode()}")
 
     audio_buffer = io.BytesIO(out)
