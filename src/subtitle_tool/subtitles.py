@@ -88,6 +88,11 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
         Exception: This method will return an exception if the subtitle is invalid.
     """
 
+    # It might as well be that no subtitles are generated for a given segment,
+    # when it's only music, for example.
+    if len(subtitles) == 0:
+        return
+
     if subtitles[-1].end > (duration * 1000):
         raise SubtitleValidationException(
             f"Subtitle ends at {subtitles[-1].end} ({precisedelta(int(subtitles[-1].end / 1000))}) while audio segment ends at {duration * 1000} ({precisedelta(int(duration))})"

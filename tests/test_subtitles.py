@@ -219,6 +219,14 @@ class TestValidateSubtitles:
         # Should not raise exception
         validate_subtitles(subtitles, duration)
 
+    def test_no_subtitle(self):
+        """Test with no subtitle generated"""
+        subtitles = []
+        duration = 10.0
+
+        # Should not raise exception
+        validate_subtitles(subtitles, duration)
+
 
 class TestSaveToJson:
     """Test save_to_json function"""
