@@ -33,7 +33,7 @@ class TestSubtitleEvent:
         """Test SubtitleEvent field validation"""
         # Test with missing fields - should raise ValidationError
         with pytest.raises(ValidationError):
-            SubtitleEvent(start=1000)  # missing end and text
+            SubtitleEvent(start=1000)  # type: ignore # missing end and text
 
 
 class TestSubtitlesToEvents:
