@@ -184,9 +184,6 @@ class AISubtitler(object):
 
         """
 
-    def __post_init__(self):
-        self.client = genai.Client(api_key=self.api_key)
-
     @contextmanager
     def upload_audio(self, segment: AudioSegment):
         """
@@ -211,12 +208,13 @@ class AISubtitler(object):
             logger.debug(f"Audio segment exported to {temp_file.name}")
 
             # Upload the temporary file (API will infer mime type from extension)
-            ref = self.client.files.upload(file=temp_file.name)  # type: ignore
+            client = genai.Client(api_key=self.api_key)
+            ref = client.files.upload(file=temp_file.name)  # type: ignore
             logger.debug(f"Temporary file {temp_file.name} uploaded as {ref.name}")
             try:
                 yield ref
             finally:
-                self.client.files.delete(name=f"{ref.name}")
+                client.files.delete(name=f"{ref.name}")
                 logger.debug(
                     f"Removed temporary file {temp_file.name} upload {ref.name}"
                 )
@@ -267,7 +265,8 @@ class AISubtitler(object):
         """
 
         logger.debug("Asking Gemini to generate subtitles...")
-        response = self.client.models.generate_content(
+        client = genai.Client(api_key=self.api_key)
+        response = client.models.generate_content(
             model=self.model_name,
             contents=["Create subtitles for this audio file", file_ref],
             config=types.GenerateContentConfig(
