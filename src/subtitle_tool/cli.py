@@ -119,13 +119,13 @@ def main(
         # 3. Ask Gemini to create subtitles
         click.echo(f"Generating subtitles with {ai_model}...")
 
-        gemini = AISubtitler(
+        subtitler = AISubtitler(
             api_key=api_key, model_name=ai_model, delete_temp_files=not keep_temp_files
         )
 
         executor = ThreadPoolExecutor(max_workers=5)
         try:
-            subtitle_groups = list(executor.map(gemini.transcribe_audio, segments))
+            subtitle_groups = list(executor.map(subtitler.transcribe_audio, segments))
         except (KeyboardInterrupt, click.Abort):
             click.echo("Control-C pressed, shutting down processing")
             executor.shutdown(wait=False, cancel_futures=True)
