@@ -21,6 +21,10 @@ class SubtitleEvent(BaseModel):
     model_config = ConfigDict(title="Individual subtitle text")
 
 
+class SubtitleValidationException(Exception):
+    pass
+
+
 def subtitles_to_events(subtitle: SSAFile) -> list[SubtitleEvent]:
     """
     Return a list of SubtitleEvent from a subtitle file.
@@ -85,14 +89,14 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
     """
 
     if subtitles[-1].end > (duration * 1000):
-        raise Exception(
+        raise SubtitleValidationException(
             f"Subtitle ends at {subtitles[-1].end} ({precisedelta(int(subtitles[-1].end / 1000))}) while audio segment ends at {duration * 1000} ({precisedelta(int(duration))})"
         )
 
     prev_end = 0
     for index, event in enumerate(subtitles):
         if event.start > event.end:
-            raise Exception(
+            raise SubtitleValidationException(
                 f"Subtitle {index} starts at {event.start} ({precisedelta(int(event.start / 1000))}) but ends at {event.end} ({precisedelta(int(event.end / 1000))})"
             )
 
@@ -101,15 +105,22 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
             continue
 
         if event.start < prev_end:
-            raise Exception(
+            raise SubtitleValidationException(
                 f"Subtitle {index} starts at {event.start} (({precisedelta(int(event.start / 1000))})) but the previous subtitle finishes at {prev_end} (({precisedelta(int(prev_end / 1000))}))"
             )
 
         prev_end = event.end
 
 
-def save_to_json(subtitles: list[SubtitleEvent], name):
-    with open(name, "w") as f:
+def save_to_json(subtitles: list[SubtitleEvent], path):
+    """
+    Export a list of SubtitleEvents to a JSON file.
+
+    Args:
+        subtitles (list[SubtitleEvent]): subtitles to be exported
+        path (str): Export path
+    """
+    with open(path, "w") as f:
         f.write(json.dumps(subtitles_to_dict(events_to_subtitles(subtitles))))
 
 
@@ -126,6 +137,9 @@ def merge_subtitle_events(
 
     Returns:
         list[SubtitleEvent]: merge subtitle stream
+
+    Throws:
+        SubtitleValidationException in case the merged subtitles are invalid.
     """
     time_shift = 0
     all_events = []

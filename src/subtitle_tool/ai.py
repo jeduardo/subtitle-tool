@@ -7,59 +7,75 @@ from google import genai
 from google.genai import types
 from google.genai.errors import ClientError
 from pydub import AudioSegment
-from subtitle_tool.subtitles import SubtitleEvent, validate_subtitles
-from tenacity import before_sleep_log, retry, stop_after_attempt, retry_if_exception
+from subtitle_tool.subtitles import (
+    SubtitleEvent,
+    SubtitleValidationException,
+    validate_subtitles,
+)
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    retry_if_exception,
+)
 
 logger = logging.getLogger("subtitle_tool.ai")
 
+DEFAULT_WAIT_TIME = 60.0
 
-def is_rate_limit_exception(exception):
+
+def is_recoverable_exception(exception: ClientError) -> bool:
     """
-    Check if the exception is a Gemini rate limit error (status 429).
+    We define as recoverable exceptions the ones that hit per-minute quotas.
+    For per-day quotas we want to abort any retries.
 
     Args:
-        exception: Any exception object
+        exception (ClientError): a Gemini ClientError
 
     Returns:
-        bool: True if it's a Gemini rate limit error
+        bool: able to recover or not
     """
-    if isinstance(exception, ClientError):
-        return exception.code == 429
-    return False
+    details = exception.details["error"]["details"]
+    for detail in details:
+        if detail.get("@type") == "type.googleapis.com/google.rpc.QuotaFailure":
+            for violation in detail.get("violations"):
+                # e.g. minute: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
+                # e.g. day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+                if "PerDay" in violation["quotaId"]:
+                    return False
+    return True
 
 
-def extract_retry_delay_from_message(exception):
+def extract_retry_delay_from_message(exception: ClientError) -> float:
     """
-    Extract retry delay from exception message by parsing the JSON-like structure.
+    Extract retry delay from rate-limit message.
+    It will return 60 seconds on parsing error.
 
     Args:
         exception: The exception object
 
     Returns:
-        float: Retry delay in seconds, defaults to 5 if not found
+        float: Retry delay in seconds, defaults to 60 if not found
     """
     try:
-        if isinstance(exception, ClientError):
-            if is_rate_limit_exception(exception):
-                for detail in exception.details["error"]["details"]:
-                    if (
-                        detail.get("@type")
-                        == "type.googleapis.com/google.rpc.RetryInfo"
-                    ):
-                        retry_delay = detail.get("retryDelay", "")
-                        if retry_delay.endswith("s"):
-                            return float(retry_delay[:-1])
+        for detail in exception.details["error"]["details"]:
+            if detail.get("@type") == "type.googleapis.com/google.rpc.RetryInfo":
+                retry_delay = detail.get("retryDelay", "")
+                if retry_delay.endswith("s"):
+                    return float(retry_delay[:-1])
     except Exception as e:
         logger.warning(f"Could not parse retry delay from exception: {e}")
 
     # Default fallback delay
-    return 5.0
+    return DEFAULT_WAIT_TIME
 
 
-def ai_call_wait_handler(retry_state):
+def wait_api_limit(retry_state) -> float:
     """
-    Custom wait handler for Gemini rate limit exceptions.
-    Extracts the retry delay from the exception message and sleeps for that duration.
+
+    Extracts the retry delay from rate limit messages.
+    From internal exceptions, it retries after 60 seconds.
 
     Args:
         retry_state: The retry state object from tenacity
@@ -70,7 +86,7 @@ def ai_call_wait_handler(retry_state):
     if retry_state.outcome and retry_state.outcome.failed:
         exception = retry_state.outcome.exception()
 
-        if is_rate_limit_exception(exception):
+        if exception.code == 429:
             delay = extract_retry_delay_from_message(exception)
             logger.debug(
                 f"Rate limit hit, sleeping for {delay} seconds as suggested by API"
@@ -78,12 +94,17 @@ def ai_call_wait_handler(retry_state):
             return delay
 
     # Default delay for other cases
-    return 5.0
+    return DEFAULT_WAIT_TIME
 
 
-def should_retry_ai_call(exception):
+def retry_handler(exception) -> bool:
     """
-    Determine if we should retry based on the exception.
+    This handler defines the cases when tenacity should retry calling the API.
+    We will retry the API when:
+    - It's an error issued by the Gemini Client
+    - It's a 500 INTERNAL error, which Gemini sometimes issues and they recommend to retry.
+    - It's a 429 rate limit error for quotas that are replenished by the minute.
+    For all other issues, we will not ask tenacity to retry.
 
     Args:
         exception: The exception that occurred
@@ -91,7 +112,11 @@ def should_retry_ai_call(exception):
     Returns:
         bool: True if we should retry
     """
-    return is_rate_limit_exception(exception)
+    return (
+        isinstance(exception, ClientError)
+        and (exception.code == 429 or exception.code == 500)
+        and is_recoverable_exception(exception)
+    )
 
 
 @dataclass
@@ -220,8 +245,9 @@ class AISubtitler(object):
                 )
 
     @retry(
+        retry=retry_if_exception_type(SubtitleValidationException),
         stop=stop_after_attempt(50),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
+        before_sleep=before_sleep_log(logger, logging.DEBUG),
     )
     def _audio_to_subtitles(
         self, audio_segment: AudioSegment, file_ref
@@ -233,12 +259,17 @@ class AISubtitler(object):
         validate the result before returning. If the subtitle is invalid,
         it will ask Gemini to recreate the subtitles up to 50 times.
 
+        It will only retry the generation on subtitle validation errors.
+
         Args:
             audio_segment (AudioSegment): segment to be transcribed
             file_ref (types.File): reference to uploaded file
 
         Returns:
             list[SubtitleEvent]: subtitles extracted from audio track
+
+        Throws:
+            SubtitleValidationException in case the merged subtitles are invalid.
 
         """
         subtitle_events = self._generate_subtitles(file_ref)
@@ -247,15 +278,18 @@ class AISubtitler(object):
         return subtitle_events
 
     @retry(
-        retry=retry_if_exception(should_retry_ai_call),
-        wait=ai_call_wait_handler,
+        retry=retry_if_exception(retry_handler),
+        wait=wait_api_limit,
         stop=stop_after_attempt(30),
+        reraise=True,
     )
     def _generate_subtitles(self, file_ref) -> list[SubtitleEvent]:
         """
         Generate subtitles for the file uploaded onto Gemini servers.
         It will retrieve the wait time from Gemini rate limits and run
         again, up to 30 times.
+
+        If even then nothing is successfull, it will re-raise the exception.
 
         Args:
             file_id (str): identifier of uploaded file

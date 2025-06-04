@@ -73,9 +73,7 @@ def setup_logging(verbose=False, debug=False):
 )
 @click.option("--debug", is_flag=True, help="Enable debug logging for all modules")
 @click.option("--keep-temp-files", is_flag=True, help="Do not erase temporary files")
-@click.pass_context
 def main(
-    ctx: click.Context,
     api_key: str,
     ai_model: str,
     video: str,
@@ -87,83 +85,84 @@ def main(
     setup_logging(debug=debug, verbose=verbose)
 
     start = time.time()
-    executor = None
-    completed = False
-
-    def cleanup():
-        if not completed:
-            if executor:
-                click.echo("\nForce killing all tasks...")
-                # Don't wait for stuck tasks - just shutdown immediately
-                executor.shutdown(wait=False, cancel_futures=True)
-                os._exit(-1)
-
-    # Register cleanup function
-    ctx.call_on_close(cleanup)
 
     if not api_key:
-        raise click.ClickException(
-            f"API key not informed or not present in the environment variable {API_KEY_NAME}"
+        raise click.MissingParameter(
+            f"API key not informed with --api-key or not present in the environment variable {API_KEY_NAME}"
         )
 
     if not audio and not video or audio and video:
-        raise click.ClickException(f"Either --video or --audio need to be specified")
+        raise click.MissingParameter(f"Either --video or --audio need to be specified")
 
     click.echo(f"Generating subtitle for {video if video else audio}")
 
-    # 1. Load audio stream from either video or audio file
-    media_path = Path(video) if video else Path(audio)
-    if not media_path.exists():
-        raise click.ClickException(f"{media_path} does not exist")
-    if not media_path.is_file():
-        raise click.ClickException(f"{media_path} is not a file")
-
     try:
-        audio_stream = extract_audio(video) if video else AudioSegment.from_file(audio)
+        # 1. Load audio stream from either video or audio file
+        media_path = Path(video) if video else Path(audio)
+        if not media_path.exists():
+            raise click.BadArgumentUsage(f"{media_path} does not exist")
+        if not media_path.is_file():
+            raise click.BadArgumentUsage(f"{media_path} is not a file")
+
+        try:
+            audio_stream = (
+                extract_audio(video) if video else AudioSegment.from_file(audio)
+            )
+        except Exception as e:
+            raise click.ClickException(f"Error loading audio stream: {e}")
+        click.echo(f"Audio loaded ({precisedelta(int(audio_stream.duration_seconds))})")
+
+        # 2. Split the audio stream into 30-second segments
+        click.echo("Segmenting audio stream...")
+        segments = split_audio(audio_stream, segment_length=30)
+        click.echo(f"Audio split into {len(segments)} segments")
+
+        # 3. Ask Gemini to create subtitles
+        click.echo(f"Generating subtitles with {ai_model}...")
+
+        gemini = AISubtitler(
+            api_key=api_key, model_name=ai_model, delete_temp_files=not keep_temp_files
+        )
+
+        executor = ThreadPoolExecutor(max_workers=5)
+        try:
+            subtitle_groups = list(executor.map(gemini.transcribe_audio, segments))
+        except (KeyboardInterrupt, click.Abort):
+            click.echo("Control-C pressed, shutting down processing")
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise click.Abort()
+
+        # 4. Join all subtitles into a single one
+        segment_durations = [segment.duration_seconds * 1000 for segment in segments]
+        subtitle_events = merge_subtitle_events(subtitle_groups, segment_durations)
+
+        # 5. Convert subtitle events into subtitle file
+        subtitles = events_to_subtitles(subtitle_events)
+
+        # 6. Backup existing subtitle (if exists)
+        subtitle_path = Path(f"{media_path.parent}/{media_path.stem}.srt")
+
+        if subtitle_path.exists():
+            dst = f"{subtitle_path}.bak"
+            shutil.move(subtitle_path, dst)
+            click.echo(f"Existing subtitle backed up to {dst}")
+
+        # 7. Write AI response
+        with open(subtitle_path, "w") as f:
+            subtitles.to_file(f, "srt")
+
+        # 8. Output processing info
+        end = time.time()
+        duration = timedelta(seconds=round(end - start, 2))
+        click.echo(
+            f"Subtitle saved at {subtitle_path} (Processed for {naturaldelta(duration)})"
+        )
+    except click.ClickException:
+        # Re-raise them for click to handle
+        raise
     except Exception as e:
-        raise click.ClickException(f"Error loading audio stream: {e}")
-    click.echo(f"Audio loaded ({precisedelta(int(audio_stream.duration_seconds))})")
-
-    # 2. Split the audio stream into 30-second segments
-    click.echo("Segmenting audio stream...")
-    segments = split_audio(audio_stream, segment_length=30)
-    click.echo(f"Audio split into {len(segments)} segments")
-
-    # 3. Ask Gemini to create subtitles
-    click.echo(f"Generating subtitles with {ai_model}...")
-
-    gemini = AISubtitler(
-        api_key=api_key, model_name=ai_model, delete_temp_files=not keep_temp_files
-    )
-    executor = ThreadPoolExecutor(max_workers=5)
-    subtitle_groups = list(executor.map(gemini.transcribe_audio, segments))
-
-    # 4. Join all subtitles into a single one
-    segment_durations = [segment.duration_seconds * 1000 for segment in segments]
-    subtitle_events = merge_subtitle_events(subtitle_groups, segment_durations)
-
-    # 5. Convert subtitle events into subtitle file
-    subtitles = events_to_subtitles(subtitle_events)
-
-    # 6. Backup existing subtitle (if exists)
-    subtitle_path = Path(f"{media_path.parent}/{media_path.stem}.srt")
-
-    if subtitle_path.exists():
-        dst = f"{subtitle_path}.bak"
-        shutil.move(subtitle_path, dst)
-        click.echo(f"Existing subtitle backed up to {dst}")
-
-    # 7. Write AI response
-    with open(subtitle_path, "w") as f:
-        subtitles.to_file(f, "srt")
-
-    # 8. Output processing info
-    end = time.time()
-    duration = timedelta(seconds=round(end - start, 2))
-    click.echo(
-        f"Subtitle saved at {subtitle_path} (Processed for {naturaldelta(duration)})"
-    )
-    completed = True
+        click.echo(f"Internal error: {e!r}", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
