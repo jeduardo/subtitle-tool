@@ -143,6 +143,16 @@ def merge_subtitle_events(
     """
     time_shift = 0
     all_events = []
+
+    if len(subtitle_groups) != len(segment_durations):
+        raise Exception("Different number of subtitles and segments")
+
+    if len(subtitle_groups) == 0:
+        raise Exception("No subtitle groups to merge")
+
+    if len(segment_durations) == 0:
+        raise Exception("No segments to compare")
+
     total_duration = reduce(lambda x, y: x + y, segment_durations)
     for index, events in enumerate(subtitle_groups):
         duration = segment_durations[index]
