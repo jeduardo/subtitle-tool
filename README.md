@@ -20,6 +20,8 @@ This utility uses Google Gemini to sync subtitles to videos.
 Export the API key for Gemini to the environment variable `GEMINI_API_KEY`
 **or** specify it in the command line with the flag `--api-key`.
 
+`ffmpeg` needs to be installed (`brew install ffmpeg`, `apt-get install ffmpeg` or `dnf install ffmpeg`)
+
 ## Installation
 
 ```shell
