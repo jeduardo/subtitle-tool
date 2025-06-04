@@ -307,10 +307,6 @@ class AISubtitler(object):
                 # Don't want to censor any subtitles
                 safety_settings=[
                     types.SafetySetting(
-                        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                        threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                    ),
-                    types.SafetySetting(
                         category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
                         threshold=types.HarmBlockThreshold.BLOCK_NONE,
                     ),
