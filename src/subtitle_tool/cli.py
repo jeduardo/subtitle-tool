@@ -60,7 +60,7 @@ def setup_logging(verbose=False, debug=False):
 @click.option(
     "--ai-model",
     default=AI_DEFAULT_MODEL,
-    help=f"Gemini model to use (default {AI_DEFAULT_MODEL}",
+    help=f"Gemini model to use (default {AI_DEFAULT_MODEL})",
 )
 @click.option("--video", help="Path to video file")
 @click.option("--audio", help="Path to audio file")
