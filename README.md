@@ -25,6 +25,7 @@ Export the API key for Gemini to the environment variable `GEMINI_API_KEY`
 ```shell
 # Leaving it possible to change the local code
 uv tool install -e .
+uv tool update-shell
 ```
 
 ## Usage
