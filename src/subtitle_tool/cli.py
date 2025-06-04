@@ -55,13 +55,15 @@ def setup_logging(verbose=False, debug=False):
 @click.option(
     "--api-key",
     envvar=API_KEY_NAME,
+    type=click.STRING,
     help="Google Gemini API key",
 )
 @click.option(
     "-m",
     "--ai-model",
+    type=click.STRING,
     default=AI_DEFAULT_MODEL,
-    help=f"Gemini model to use (default {AI_DEFAULT_MODEL})",
+    help=f"Gemini model to use",
 )
 @click.option(
     "-vf",
@@ -90,7 +92,7 @@ def setup_logging(verbose=False, debug=False):
 @click.option(
     "-s",
     "--subtitle-path",
-    help="Path to save subtitles (default: filename.srt)",
+    help="Path to save subtitles",
 )
 @click.option(
     "-v",
