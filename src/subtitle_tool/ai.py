@@ -283,6 +283,7 @@ class AISubtitler(object):
         retry=retry_if_exception(retry_handler),
         wait=wait_api_limit,
         stop=stop_after_attempt(30),
+        before_sleep=before_sleep_log(logger, logging.DEBUG),
         reraise=True,
     )
     def _generate_subtitles(self, file_ref) -> list[SubtitleEvent]:
