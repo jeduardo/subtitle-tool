@@ -213,8 +213,6 @@ class TestMainCommand:
         mock_subtitler_instance = Mock()
         mock_ai_subtitler.return_value = mock_subtitler_instance
 
-        mock_transcribe_audio
-
         mock_executor_instance = Mock()
         mock_executor.return_value.__enter__.return_value = mock_executor_instance
         mock_executor_instance.map.return_value = [["subtitle1"], ["subtitle2"]]
