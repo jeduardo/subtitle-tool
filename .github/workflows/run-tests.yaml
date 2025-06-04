@@ -8,7 +8,7 @@ jobs:
     name: python
     runs-on: ubuntu-latest
 
-    container: ghcr.io/jrottenberg/ffmpeg:ffmpeg-7.1-ubuntu2404
+    container: jrottenberg/ffmpeg
 
     steps:
       - uses: actions/checkout@v4
