@@ -5,6 +5,7 @@ import logging
 import shutil
 import time
 import sys
+import traceback
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -216,6 +217,8 @@ def main(
         raise
     except Exception as e:
         click.echo(f"Internal error: {e!r}", err=True)
+        if debug or verbose:
+            click.echo(traceback.format_exc())
         if executor:
             click.echo("Force-stopping all transcription tasks...", nl=False)
             executor.shutdown(wait=True, cancel_futures=True)
