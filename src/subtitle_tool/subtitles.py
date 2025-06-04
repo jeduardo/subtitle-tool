@@ -49,7 +49,7 @@ def subtitles_to_dict(subtitle: SSAFile) -> list[dict]:
         subtitle: SSAFile: parsed subtitle file
 
     Returns:
-        dict]: list of formatted events
+        list[dict]: list of formatted events
     """
     return [
         {"start": obj.start, "end": obj.end, "text": obj.text}
