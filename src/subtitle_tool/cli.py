@@ -5,7 +5,6 @@ import logging
 import shutil
 import time
 import sys
-import os
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
