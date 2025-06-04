@@ -1,6 +1,7 @@
 name: Run tests
 
-on: []
+on:
+  - push
 
 jobs:
   uv-example:
