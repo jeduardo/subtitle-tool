@@ -121,7 +121,7 @@ class TestMainCommand:
             main, ["--api-key", "test_key", "--video", str(nonexistent_path)]
         )
         assert result.exit_code != 0
-        assert f"{nonexistent_path} does not exist" in result.output
+        assert f"File '{nonexistent_path}' does not exist" in result.output
 
     def test_directory_instead_of_file(self):
         """Test that directory path raises proper error"""
@@ -129,7 +129,7 @@ class TestMainCommand:
             main, ["--api-key", "test_key", "--video", str(self.temp_dir)]
         )
         assert result.exit_code != 0
-        assert f"{self.temp_dir} is not a file" in result.output
+        assert f"File '{self.temp_dir}' is a directory" in result.output
 
     @patch("subtitle_tool.video.extract_audio")
     @patch("subtitle_tool.audio.split_audio")

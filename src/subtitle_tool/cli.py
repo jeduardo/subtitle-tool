@@ -58,28 +58,83 @@ def setup_logging(verbose=False, debug=False):
     help="Google Gemini API key",
 )
 @click.option(
+    "-m",
     "--ai-model",
     default=AI_DEFAULT_MODEL,
     help=f"Gemini model to use (default {AI_DEFAULT_MODEL})",
 )
-@click.option("--video", help="Path to video file")
-@click.option("--audio", help="Path to audio file")
 @click.option(
-    "--verbose",
+    "-vf",
+    "--video",
+    help="Path to video file",
+    type=click.Path(
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        path_type=Path,
+    ),
+)
+@click.option(
+    "-af",
+    "--audio",
+    help="Path to audio file",
+    type=click.Path(
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        path_type=Path,
+    ),
+)
+@click.option(
+    "-s",
+    "--subtitle-path",
+    help="Path to save subtitles (default: filename.srt)",
+)
+@click.option(
     "-v",
+    "--verbose",
     is_flag=True,
     help="Enable debug logging for subtitle_tool modules",
 )
-@click.option("--debug", is_flag=True, help="Enable debug logging for all modules")
-@click.option("--keep-temp-files", is_flag=True, help="Do not erase temporary files")
+@click.option(
+    "-d",
+    "--debug",
+    is_flag=True,
+    help="Enable debug logging for all modules",
+)
+@click.option(
+    "-k",
+    "--keep-temp-files",
+    is_flag=True,
+    help="Do not erase temporary files",
+)
+@click.option(
+    "-l",
+    "--audio-segment-length",
+    type=click.INT,
+    help="Length of audio segments to be subtitled in seconds (default: 30)",
+    default=30,
+)
+@click.option(
+    "-p",
+    "--parallel-segments",
+    help="Number of segments subtitled in parallel",
+    type=click.INT,
+    default=5,
+)
 def main(
     api_key: str,
     ai_model: str,
-    video: str,
-    audio: str,
+    video: Path,
+    audio: Path,
+    subtitle_path: str,
     verbose: bool,
     debug: bool,
-    keep_temp_files: bool = False,
+    keep_temp_files: bool,
+    audio_segment_length: int,
+    parallel_segments: int,
 ) -> None:
     setup_logging(debug=debug, verbose=verbose)
 
@@ -95,14 +150,11 @@ def main(
 
     click.echo(f"Generating subtitle for {video if video else audio}")
 
+    executor = None
+
     try:
         # 1. Load audio stream from either video or audio file
-        media_path = Path(video) if video else Path(audio)
-        if not media_path.exists():
-            raise click.BadArgumentUsage(f"{media_path} does not exist")
-        if not media_path.is_file():
-            raise click.BadArgumentUsage(f"{media_path} is not a file")
-
+        media_path = video if video else audio
         try:
             audio_stream = (
                 extract_audio(video) if video else AudioSegment.from_file(audio)
@@ -112,8 +164,8 @@ def main(
         click.echo(f"Audio loaded ({precisedelta(int(audio_stream.duration_seconds))})")
 
         # 2. Split the audio stream into 30-second segments
-        click.echo("Segmenting audio stream...")
-        segments = split_audio(audio_stream, segment_length=30)
+        click.echo(f"Segmenting audio stream in {audio_segment_length} chunks...")
+        segments = split_audio(audio_stream, segment_length=audio_segment_length)
         click.echo(f"Audio split into {len(segments)} segments")
 
         # 3. Ask Gemini to create subtitles
@@ -123,7 +175,7 @@ def main(
             api_key=api_key, model_name=ai_model, delete_temp_files=not keep_temp_files
         )
 
-        executor = ThreadPoolExecutor(max_workers=5)
+        executor = ThreadPoolExecutor(max_workers=parallel_segments)
         try:
             subtitle_groups = list(executor.map(subtitler.transcribe_audio, segments))
         except (KeyboardInterrupt, click.Abort):
@@ -139,9 +191,10 @@ def main(
         subtitles = events_to_subtitles(subtitle_events)
 
         # 6. Backup existing subtitle (if exists)
-        subtitle_path = Path(f"{media_path.parent}/{media_path.stem}.srt")
+        if not subtitle_path:
+            subtitle_path = f"{media_path.parent}/{media_path.stem}.srt"
 
-        if subtitle_path.exists():
+        if Path(subtitle_path).exists():
             dst = f"{subtitle_path}.bak"
             shutil.move(subtitle_path, dst)
             click.echo(f"Existing subtitle backed up to {dst}")
@@ -161,6 +214,11 @@ def main(
         raise
     except Exception as e:
         click.echo(f"Internal error: {e!r}", err=True)
+        if executor:
+            click.echo("Force-stopping all transcription tasks...", nl=False)
+            executor.shutdown(wait=True, cancel_futures=True)
+            click.echo("done.")
+
         sys.exit(1)
 
 
