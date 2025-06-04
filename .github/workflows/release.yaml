@@ -1,0 +1,60 @@
+name: "Release and bump Python version (patch)"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the repo
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Install uv itself (pins to a known uv version)
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # 3. Read the current version from pyproject.toml
+      - name: Read current version
+        id: get_version
+        run: |
+          # Use uvx with toml-cli to extract project.version
+          CURRENT=$(uvx --from=toml-cli toml get --toml-path=pyproject.toml project.version)
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+      # 4. Bump the patch version using bump2version
+      - name: Bump patch version
+        id: do_bump
+        run: |
+          echo "Old version is ${{ steps.get_version.outputs.current }}"
+          # uvx will install bump2version on-the-fly and run it
+          uvx --from=bump2version bumpversion \
+            --allow-dirty \
+            --current-version "${{ steps.get_version.outputs.current }}" \
+            patch pyproject.toml
+
+          # Read the new version back out
+          NEW=$(uvx --from=toml-cli toml get --toml-path=pyproject.toml project.version)
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+
+      # 5. Commit and push the changed pyproject.toml
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "[email protected]"
+          git add pyproject.toml
+          git commit -m "chore: bump version to ${{ steps.do_bump.outputs.new }}"
+          git push
+
+      # 6. Create and push a Git tag for the new version
+      - name: Tag release
+        run: |
+          git tag "v${{ steps.do_bump.outputs.new }}"
+          git push origin "v${{ steps.do_bump.outputs.new }}"
