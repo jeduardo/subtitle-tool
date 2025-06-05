@@ -36,18 +36,19 @@ def is_recoverable_exception(exception: ClientError) -> bool:
     Returns:
         bool: able to recover or not
     """
-    details = exception.details["error"]["details"]
-    for detail in details:
-        if detail.get("@type") == "type.googleapis.com/google.rpc.QuotaFailure":
-            for violation in detail.get("violations"):
-                # e.g. minute: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
-                # e.g. day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
-                if "PerDay" in violation["quotaId"]:
-                    return False
+    if exception.code == 429:
+        details = exception.details["error"]["details"]
+        for detail in details:
+            if detail.get("@type") == "type.googleapis.com/google.rpc.QuotaFailure":
+                for violation in detail.get("violations"):
+                    # e.g. minute: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
+                    # e.g. day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+                    if "PerDay" in violation["quotaId"]:
+                        return False
     return True
 
 
-def extract_retry_delay_from_message(exception: ClientError) -> float:
+def extract_retry_delay(exception: ClientError) -> float:
     """
     Extract retry delay from rate-limit message.
     It will return 60 seconds on parsing error.
@@ -88,7 +89,7 @@ def wait_api_limit(retry_state) -> float:
 
         if isinstance(exception, ClientError):
             if exception.code == 429:
-                delay = extract_retry_delay_from_message(exception)
+                delay = extract_retry_delay(exception)
                 logger.debug(
                     f"Rate limit hit, sleeping for {delay} seconds as suggested by API"
                 )
@@ -105,9 +106,9 @@ def retry_handler(exception) -> bool:
     - It's an error issued by the Gemini Client
     - It's a 500 INTERNAL error, which Gemini sometimes issues and they recommend to retry.
     - It's a 429 rate limit error for quotas that are replenished by the minute.
-    - It's a Server error. 
+    - It's a Server error.
     For all other issues, we will not ask tenacity to retry.
-    
+
 
     Args:
         exception: The exception that occurred
