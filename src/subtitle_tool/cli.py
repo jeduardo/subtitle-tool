@@ -12,7 +12,7 @@ from datetime import timedelta
 from humanize.time import naturaldelta, precisedelta
 from pathlib import Path
 from subtitle_tool.ai import AISubtitler
-from subtitle_tool.audio import split_audio
+from subtitle_tool.audio import AudioSplitter
 from subtitle_tool.subtitles import events_to_subtitles, merge_subtitle_events
 from subtitle_tool.video import extract_audio
 from pydub import AudioSegment
@@ -168,7 +168,9 @@ def main(
 
         # 2. Split the audio stream into 30-second segments
         click.echo(f"Segmenting audio stream in {audio_segment_length} chunks...")
-        segments = split_audio(audio_stream, segment_length=audio_segment_length)
+        segments = AudioSplitter().split_audio(
+            audio_stream, segment_length=audio_segment_length
+        )
         click.echo(f"Audio split into {len(segments)} segments")
 
         # 3. Ask Gemini to create subtitles

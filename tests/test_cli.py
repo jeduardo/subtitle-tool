@@ -13,6 +13,8 @@ from datetime import timedelta
 from pydub import AudioSegment
 from pydub.generators import WhiteNoise
 
+from subtitle_tool.audio import AudioSplitter
+
 # Import the module under test
 from subtitle_tool.cli import main, setup_logging, API_KEY_NAME, AI_DEFAULT_MODEL
 
@@ -132,7 +134,7 @@ class TestMainCommand:
         assert f"File '{self.temp_dir}' is a directory" in result.output
 
     @patch("subtitle_tool.video.extract_audio")
-    @patch("subtitle_tool.audio.split_audio")
+    @patch.object(AudioSplitter, "split_audio")
     @patch("subtitle_tool.ai.AISubtitler")
     @patch("concurrent.futures.ThreadPoolExecutor")
     @patch("subtitle_tool.subtitles.merge_subtitle_events")
@@ -184,7 +186,7 @@ class TestMainCommand:
         assert "Subtitle saved at" in result.output
 
     @patch("pydub.AudioSegment")
-    @patch("subtitle_tool.audio.split_audio")
+    @patch.object(AudioSplitter, "split_audio")
     @patch("subtitle_tool.ai.AISubtitler")
     @patch("subtitle_tool.ai.AISubtitler.transcribe_audio")
     @patch("concurrent.futures.ThreadPoolExecutor")
@@ -258,7 +260,7 @@ class TestMainCommand:
         assert "Error loading audio stream" in result.output
 
     @patch("subtitle_tool.video.extract_audio")
-    @patch("subtitle_tool.audio.split_audio")
+    @patch.object(AudioSplitter, "split_audio")
     @patch("subtitle_tool.ai.AISubtitler")
     @patch("concurrent.futures.ThreadPoolExecutor")
     @pytest.mark.skip(reason="work in progress")
@@ -289,7 +291,7 @@ class TestMainCommand:
         assert "Control-C pressed" in result.output
 
     @patch("subtitle_tool.video.extract_audio")
-    @patch("subtitle_tool.audio.split_audio")
+    @patch.object(AudioSplitter, "split_audio")
     @patch("subtitle_tool.ai.AISubtitler")
     @patch("concurrent.futures.ThreadPoolExecutor")
     @patch("subtitle_tool.subtitles.merge_subtitle_events")
@@ -432,7 +434,7 @@ class TestErrorHandling:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     @patch("subtitle_tool.video.extract_audio")
-    @patch("subtitle_tool.audio.split_audio")
+    @patch.object(AudioSplitter, "split_audio")
     @patch("subtitle_tool.ai.AISubtitler")
     def test_internal_error_handling(
         self, mock_ai_subtitler, mock_split_audio, mock_extract_audio
