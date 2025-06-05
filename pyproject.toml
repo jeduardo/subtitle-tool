@@ -1,7 +1,7 @@
 [project]
 name = "subtitle-tool"
 version = "0.1.8"
-description = "Tool for generating or synchronizing subtitles with help from Google Gemini AI."
+description = "Tool for generating subtitles with help from Google Gemini AI."
 authors = [{ name = "J. Eduardo", email = "j.eduardo@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.13"
