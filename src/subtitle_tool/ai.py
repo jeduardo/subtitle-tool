@@ -105,8 +105,9 @@ def retry_handler(exception) -> bool:
     - It's an error issued by the Gemini Client
     - It's a 500 INTERNAL error, which Gemini sometimes issues and they recommend to retry.
     - It's a 429 rate limit error for quotas that are replenished by the minute.
+    - It's a Server error. 
     For all other issues, we will not ask tenacity to retry.
-    - It's a Server error
+    
 
     Args:
         exception: The exception that occurred
