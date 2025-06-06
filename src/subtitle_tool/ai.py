@@ -19,6 +19,7 @@ from tenacity import (
     stop_after_attempt,
     retry_if_exception,
     RetryCallState,
+    wait_exponential,
 )
 
 logger = logging.getLogger("subtitle_tool.ai")
@@ -215,6 +216,38 @@ class AISubtitler(object):
 
         """
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=1, max=5),
+        stop=stop_after_attempt(5),
+        before_sleep=before_sleep_log(logger, logging.DEBUG),
+        reraise=True,
+    )
+    def _upload_file(self, file_name: str):
+        """
+        Wrapper to retry file uploads to the Gemini file server.
+        It will apply exponential backoff for retries and try it for 5 times.
+
+        Args:
+            file_name (str): Path to file to be uploaded
+        """
+        client = genai.Client(api_key=self.api_key)
+        return client.files.upload(file=file_name)  # type: ignore
+
+    def _remove_file(self, ref_name: str):
+        """
+        Wrapper to remove files from the Gemini file server.
+
+        Args:
+            ref_name (str): Upload reference
+        """
+        try:
+            client = genai.Client(api_key=self.api_key)
+            client.files.delete(name=ref_name)
+        except Exception as e:
+            # Google deletes the files in 48h, so cleanup is a courtesy.
+            # This means we just issue a warning here.
+            logger.warning(f"Error while removing uploaded file {ref_name}: {e!r}")
+
     @contextmanager
     def upload_audio(self, segment: AudioSegment):
         """
@@ -238,14 +271,13 @@ class AISubtitler(object):
             segment.export(temp_file.name, format="wav")
             logger.debug(f"Audio segment exported to {temp_file.name}")
 
-            # Upload the temporary file (API will infer mime type from extension)
-            client = genai.Client(api_key=self.api_key)
-            ref = client.files.upload(file=temp_file.name)  # type: ignore
+            # Upload the temporary file (API will infer mime type from content)
+            ref = self._upload_file(temp_file.name)
             logger.debug(f"Temporary file {temp_file.name} uploaded as {ref.name}")
             try:
                 yield ref
             finally:
-                client.files.delete(name=f"{ref.name}")
+                self._remove_file(f"{ref.name}")
                 logger.debug(
                     f"Removed temporary file {temp_file.name} upload {ref.name}"
                 )
