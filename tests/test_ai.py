@@ -1,11 +1,15 @@
+import tempfile
 import unittest
 
 import json
 
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, patch
 from google.genai.errors import ClientError, ServerError
 from tenacity import RetryCallState
+from pydub import AudioSegment
+
 from subtitle_tool.ai import (
+    AISubtitler,
     is_recoverable_exception,
     extract_retry_delay,
     wait_api_limit,
@@ -320,6 +324,155 @@ class TestRetryHandler(unittest.TestCase):
         )
         result = retry_handler(error)
         self.assertTrue(result)
+
+
+class TestAISubtitler(unittest.TestCase):
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.mock_audio_segment = Mock(spec=AudioSegment)
+        self.api_key = "test_api_key"
+
+        # Instantiate the actual class
+        self.uploader = AISubtitler(
+            api_key=self.api_key, model_name="test_model", delete_temp_files=True
+        )
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    @patch("logging.getLogger")
+    def test_upload_audio_success(self, mock_logger, mock_client_class, mock_temp_file):
+        """Test successful audio upload and cleanup"""
+        # Setup mocks
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        # Execute the context manager
+        with self.uploader.upload_audio(self.mock_audio_segment) as result:
+            # Verify the result is the upload reference
+            self.assertEqual(result, mock_ref)
+
+            # Verify audio segment was exported
+            self.mock_audio_segment.export.assert_called_once_with(
+                "/tmp/test_audio.wav", format="wav"
+            )
+
+            # Verify client was created with correct API key
+            mock_client_class.assert_called_once_with(api_key=self.api_key)
+
+            # Verify file was uploaded
+            mock_client.files.upload.assert_called_once_with(file="/tmp/test_audio.wav")
+
+        # Verify cleanup happened after context manager exit
+        mock_client.files.delete.assert_called_once_with(name="files/test_upload_id")
+
+        # Verify NamedTemporaryFile was called with correct parameters
+        mock_temp_file.assert_called_once_with(suffix=".wav", delete=True)
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_upload_audio_with_delete_temp_files_false(
+        self, mock_client_class, mock_temp_file
+    ):
+        """Test that delete_temp_files parameter is passed to NamedTemporaryFile"""
+        self.uploader.delete_temp_files = False
+
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        with self.uploader.upload_audio(self.mock_audio_segment):
+            pass
+
+        # Verify NamedTemporaryFile was called with delete=False
+        mock_temp_file.assert_called_once_with(suffix=".wav", delete=False)
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_upload_audio_cleanup_on_exception(self, mock_client_class, mock_temp_file):
+        """Test that cleanup happens even if an exception occurs in the context"""
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        # Test that cleanup happens even when exception is raised in context
+        with self.assertRaises(ValueError):
+            with self.uploader.upload_audio(self.mock_audio_segment):
+                raise ValueError("Test exception")
+
+        # Verify cleanup still happened
+        mock_client.files.delete.assert_called_once_with(name="files/test_upload_id")
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_upload_audio_export_failure(self, mock_client_class, mock_temp_file):
+        """Test handling of audio export failure"""
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        # Make export raise an exception
+        self.mock_audio_segment.export.side_effect = Exception("Export failed")
+
+        with self.assertRaises(Exception) as context:
+            with self.uploader.upload_audio(self.mock_audio_segment):
+                pass
+
+        self.assertEqual(str(context.exception), "Export failed")
+
+        # Verify that genai.Client was not called since export failed
+        mock_client_class.assert_not_called()
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_upload_audio_upload_failure(self, mock_client_class, mock_temp_file):
+        """Test handling of file upload failure"""
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        # Make upload raise an exception
+        mock_client.files.upload.side_effect = Exception("Upload failed")
+
+        with self.assertRaises(Exception) as context:
+            with self.uploader.upload_audio(self.mock_audio_segment):
+                pass
+
+        self.assertEqual(str(context.exception), "Upload failed")
+
+        # Verify export was called but delete was not (since upload failed)
+        self.mock_audio_segment.export.assert_called_once()
+        mock_client.files.delete.assert_not_called()
 
 
 if __name__ == "__main__":
