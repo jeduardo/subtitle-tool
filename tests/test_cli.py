@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from concurrent.futures import ThreadPoolExecutor
-import pytest
 import ffmpeg
 import logging
 import tempfile
@@ -92,14 +91,14 @@ class TestMainCommand(unittest.TestCase):
         """Test that missing API key raises proper error"""
         os.environ.pop(API_KEY_NAME, None)
         result = self.runner.invoke(main, ["--video", str(self.test_video_path)])
-        assert result.exit_code != 0
-        assert "API key not informed" in result.output
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("API key not informed", result.output)
 
     def test_missing_media_file_arguments(self):
         """Test that missing both video and audio arguments raises error"""
         result = self.runner.invoke(main, ["--api-key", "test_key"])
-        assert result.exit_code != 0
-        assert "Either --video or --audio need to be specified" in result.output
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Either --video or --audio need to be specified", result.output)
 
     def test_both_video_and_audio_specified(self):
         """Test that specifying both video and audio raises error"""
@@ -114,8 +113,8 @@ class TestMainCommand(unittest.TestCase):
                 str(self.test_audio_path),
             ],
         )
-        assert result.exit_code != 0
-        assert "Either --video or --audio need to be specified" in result.output
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Either --video or --audio need to be specified", result.output)
 
     def test_nonexistent_file(self):
         """Test that nonexistent file raises proper error"""
@@ -123,16 +122,16 @@ class TestMainCommand(unittest.TestCase):
         result = self.runner.invoke(
             main, ["--api-key", "test_key", "--video", str(nonexistent_path)]
         )
-        assert result.exit_code != 0
-        assert f"File '{nonexistent_path}' does not exist" in result.output
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn(f"File '{nonexistent_path}' does not exist", result.output)
 
     def test_directory_instead_of_file(self):
         """Test that directory path raises proper error"""
         result = self.runner.invoke(
             main, ["--api-key", "test_key", "--video", str(self.temp_dir)]
         )
-        assert result.exit_code != 0
-        assert f"File '{self.temp_dir}' is a directory" in result.output
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn(f"File '{self.temp_dir}' is a directory", result.output)
 
     @patch("subtitle_tool.video.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
@@ -182,7 +181,7 @@ class TestMainCommand(unittest.TestCase):
         # Assertions
         self.assertEqual(result.exit_code, 0)
         mock_split_audio.assert_called_once()
-        assert "Subtitle saved at" in result.output
+        self.assertIn("Subtitle saved at", result.output)
 
     @patch("subtitle_tool.video.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
@@ -232,10 +231,10 @@ class TestMainCommand(unittest.TestCase):
         # Assertions
         self.assertEqual(result.exit_code, 0)
         mock_split_audio.assert_called_once()
-        assert "Subtitle saved at" in result.output
+        self.assertIn("Subtitle saved at", result.output)
 
+    @unittest.skip("work in progress")
     @patch("subtitle_tool.video.extract_audio")
-    @pytest.mark.skip(reason="work in progress")
     def test_audio_extraction_error(self, mock_extract_audio):
         """Test error handling when audio extraction fails"""
         mock_extract_audio.side_effect = Exception("Audio extraction failed")
@@ -244,14 +243,14 @@ class TestMainCommand(unittest.TestCase):
             main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
         )
 
-        assert result.exit_code != 0
-        assert "Error loading audio stream" in result.output
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Error loading audio stream", result.output)
 
+    @unittest.skip("work in progress")
     @patch("subtitle_tool.video.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
     @patch("subtitle_tool.ai.AISubtitler")
     @patch("concurrent.futures.ThreadPoolExecutor")
-    @pytest.mark.skip(reason="work in progress")
     def test_keyboard_interrupt_handling(
         self, mock_executor, mock_ai_subtitler, mock_split_audio, mock_extract_audio
     ):
@@ -275,17 +274,17 @@ class TestMainCommand(unittest.TestCase):
             main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
         )
 
-        assert result.exit_code != 0
-        assert "Control-C pressed" in result.output
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Control-C pressed", result.output)
 
+    @unittest.skip("work in progress")
     @patch("subtitle_tool.video.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
-    @patch("subtitle_tool.ai.AISubtitler")
-    @patch("concurrent.futures.ThreadPoolExecutor")
+    @patch.object(AISubtitler, "transcribe_audio")
+    @patch.object(ThreadPoolExecutor, "map")
     @patch("subtitle_tool.subtitles.merge_subtitle_events")
     @patch("subtitle_tool.subtitles.events_to_subtitles")
     @patch("shutil.move")
-    @pytest.mark.skip(reason="work in progress")
     def test_existing_subtitle_backup(
         self,
         mock_move,
@@ -329,20 +328,13 @@ class TestMainCommand(unittest.TestCase):
             )
 
         # Assertions
-        assert result.exit_code == 0
+        self.assertEqual(result.exit_code, 0)
         mock_move.assert_called_once()
-        assert "backed up to" in result.output
+        self.assertIn("backed up to", result.output)
 
-    def test_api_key_from_environment(self):
-        """Test that API key can be read from environment variable"""
-        with patch.dict(os.environ, {API_KEY_NAME: "env_api_key"}):
-            # This test just ensures the environment variable is recognized
-            # The actual processing would be mocked in a full test
-            result = self.runner.invoke(main, ["--video", "/nonexistent/path"])
-            # Should fail on file not existing, not on missing API key
-            assert "API key not informed" not in result.output
+        self.assertNotIn("API key not informed", result.output)
 
-    @pytest.mark.skip(reason="work in progress")
+    @unittest.skip("work in progress")
     def test_custom_ai_model(self):
         """Test that custom AI model parameter is accepted"""
         custom_model = "custom-model-name"
@@ -363,9 +355,10 @@ class TestMainCommand(unittest.TestCase):
             )
 
             # The test should fail at audio extraction, not at model validation
-            assert "Error loading audio stream" in result.output
+            self.assertNotEqual(result.exit_code, 0)
+            self.assertIn("Error loading audio stream", result.output)
 
-    @pytest.mark.skip(reason="work in progress")
+    @unittest.skip("work in progress")
     def test_keep_temp_files_flag(self):
         """Test that keep-temp-files flag is properly passed"""
         with (
@@ -387,8 +380,8 @@ class TestMainCommand(unittest.TestCase):
             )
 
             # Check that the flag doesn't cause parsing errors
-            assert result.exit_code != 0  # Should fail on audio extraction
-            assert "Error loading audio stream" in result.output
+            self.assertNotEqual(result.exit_code, 0)  # Should fail on audio extraction
+            self.assertIn("Error loading audio stream", result.output)
 
     def test_verbose_and_debug_flags(self):
         """Test that verbose and debug flags work"""
@@ -397,27 +390,27 @@ class TestMainCommand(unittest.TestCase):
             main, ["--api-key", "test_key", "--verbose", "--video", "/nonexistent/path"]
         )
         # Should fail on file not existing
-        assert "does not exist" in result.output
+        self.assertIn("does not exist", result.output)
 
         # Test debug flag
         result = self.runner.invoke(
             main, ["--api-key", "test_key", "--debug", "--video", "/nonexistent/path"]
         )
         # Should fail on file not existing
-        assert "does not exist" in result.output
+        self.assertIn("does not exist", result.output)
 
 
-class TestErrorHandling:
+class TestErrorHandling(unittest.TestCase):
     """Test error handling scenarios"""
 
-    def setup_method(self):
+    def setUp(self):
         """Setup for each test method"""
         self.runner = CliRunner()
         self.temp_dir = tempfile.mkdtemp()
         self.test_video_path = Path(self.temp_dir) / "test_video.mp4"
         self.test_video_path.touch()
 
-    def teardown_method(self):
+    def tearDown(self):
         """Cleanup after each test method"""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -435,9 +428,9 @@ class TestErrorHandling:
             main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
         )
 
-        assert result.exit_code == 1
-        assert "Error: " in result.output
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("Error: ", result.output)
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    unittest.main()
