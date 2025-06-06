@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, Mock, patch
 from google.genai.errors import ClientError, ServerError
 from tenacity import RetryCallState
 from pydub import AudioSegment
+from subtitle_tool.subtitles import SubtitleEvent
+
 
 from subtitle_tool.ai import (
     AISubtitler,
@@ -329,17 +331,17 @@ class TestAISubtitler(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.mock_audio_segment = Mock(spec=AudioSegment)
+        self.mock_audio_segment.duration_seconds = 10.0
         self.api_key = "test_api_key"
 
         # Instantiate the actual class
-        self.uploader = AISubtitler(
+        self.subtitler = AISubtitler(
             api_key=self.api_key, model_name="test_model", delete_temp_files=True
         )
 
     @patch("tempfile.NamedTemporaryFile")
     @patch("google.genai.Client")
-    @patch("logging.getLogger")
-    def test_upload_audio_success(self, mock_logger, mock_client_class, mock_temp_file):
+    def test_upload_audio_success(self, mock_client_class, mock_temp_file):
         """Test successful audio upload and cleanup"""
         # Setup mocks needed for the method to operate
         mock_temp_file_instance = MagicMock()
@@ -355,7 +357,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_client.files.upload.return_value = mock_ref
 
         # Run the method within the context manager
-        with self.uploader.upload_audio(self.mock_audio_segment) as result:
+        with self.subtitler.upload_audio(self.mock_audio_segment) as result:  # type: ignore
             # Verify the result is the upload reference
             self.assertEqual(result, mock_ref)
 
@@ -368,7 +370,7 @@ class TestAISubtitler(unittest.TestCase):
         self, mock_client_class, mock_temp_file
     ):
         """Test that delete_temp_files parameter is passed to NamedTemporaryFile"""
-        self.uploader.delete_temp_files = False
+        self.subtitler.delete_temp_files = False
 
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -382,7 +384,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_ref.name = "files/test_upload_id"
         mock_client.files.upload.return_value = mock_ref
 
-        with self.uploader.upload_audio(self.mock_audio_segment):
+        with self.subtitler.upload_audio(self.mock_audio_segment):  # type: ignore
             pass
 
         # Verify NamedTemporaryFile was called with delete=False
@@ -406,7 +408,7 @@ class TestAISubtitler(unittest.TestCase):
 
         # Test that cleanup happens even when exception is raised in context
         with self.assertRaises(ValueError):
-            with self.uploader.upload_audio(self.mock_audio_segment):
+            with self.subtitler.upload_audio(self.mock_audio_segment):
                 raise ValueError("Test exception")
 
         # Verify cleanup still happened
@@ -425,7 +427,7 @@ class TestAISubtitler(unittest.TestCase):
         self.mock_audio_segment.export.side_effect = Exception("Export failed")
 
         with self.assertRaises(Exception) as context:
-            with self.uploader.upload_audio(self.mock_audio_segment):
+            with self.subtitler.upload_audio(self.mock_audio_segment):
                 pass
 
         self.assertEqual(str(context.exception), "Export failed")
@@ -452,7 +454,7 @@ class TestAISubtitler(unittest.TestCase):
         with patch("time.sleep", lambda _: None):
             # The exception should be raised when trying to enter the context manager
             with self.assertRaises(Exception) as context:
-                with self.uploader.upload_audio(self.mock_audio_segment):
+                with self.subtitler.upload_audio(self.mock_audio_segment):
                     # This block should never be reached
                     self.fail("Context manager should not have been entered")
 
@@ -489,7 +491,7 @@ class TestAISubtitler(unittest.TestCase):
         with patch("time.sleep", lambda _: None):
             # The exception should be raised when trying to enter the context manager
             with self.assertRaises(ValueError) as context:
-                with self.uploader.upload_audio(self.mock_audio_segment):
+                with self.subtitler.upload_audio(self.mock_audio_segment):
                     # This block should never be reached
                     self.fail("Context manager should not have been entered")
 
@@ -542,7 +544,7 @@ class TestAISubtitler(unittest.TestCase):
                 with patch("time.sleep", lambda _: None):
                     # The exception should be raised when trying to enter the context manager
                     with self.assertRaises(type(error)) as context:
-                        with self.uploader.upload_audio(self.mock_audio_segment):
+                        with self.subtitler.upload_audio(self.mock_audio_segment):
                             # This block should never be reached
                             self.fail(
                                 f"Context manager should not have been entered for {error}"
@@ -557,6 +559,41 @@ class TestAISubtitler(unittest.TestCase):
 
                 # Delete should not be called since upload failed before yield
                 mock_client.files.delete.assert_not_called()
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_transcribe_audio_success(self, mock_client_class, mock_temp_file):
+        """Test successful audio transcription"""
+        # Setup mocks needed for the method to operate
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        mock_response_usage_metadata = Mock()
+        mock_response_usage_metadata.cache_tokens_details = "0"
+        mock_response_usage_metadata.cached_content_token_count = "0"
+        mock_response_usage_metadata.thoughts_token_count = "0"
+        mock_response_usage_metadata.candidates_token_count = "0"
+
+        mock_response = Mock()
+        mock_response.usage_metadata = mock_response_usage_metadata
+        mock_response.parsed = [
+            SubtitleEvent(start=1000, end=2000, text="First"),
+            SubtitleEvent(start=3000, end=4000, text="Second"),
+        ]
+
+        mock_client.models.generate_content.return_value = mock_response
+
+        result = self.subtitler.transcribe_audio(self.mock_audio_segment)
+        self.assertEqual(len(result), 2)
 
 
 if __name__ == "__main__":
