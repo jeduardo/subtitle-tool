@@ -184,64 +184,53 @@ class TestMainCommand(unittest.TestCase):
         mock_split_audio.assert_called_once()
         assert "Subtitle saved at" in result.output
 
-    @patch("pydub.AudioSegment")
+    @patch("subtitle_tool.video.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
-    @patch("subtitle_tool.ai.AISubtitler")
-    @patch("subtitle_tool.ai.AISubtitler.transcribe_audio")
-    @patch("concurrent.futures.ThreadPoolExecutor")
-    @patch("subtitle_tool.subtitles.merge_subtitle_events")
-    @patch("subtitle_tool.subtitles.events_to_subtitles")
-    @pytest.mark.skip(reason="work in progress")
+    @patch.object(AISubtitler, "transcribe_audio")
+    @patch.object(ThreadPoolExecutor, "map")
     def test_successful_audio_processing(
         self,
-        mock_audio_segment_class,
-        mock_split_audio,
-        mock_ai_subtitler,
+        mock_map,
         mock_transcribe_audio,
-        mock_executor,
-        mock_merge_events,
-        mock_events_to_subtitles,
+        mock_split_audio,
+        mock_extract_audio,
     ):
-        """Test successful audio processing flow"""
+        """Test successful video processing flow"""
         # Setup mocks
         mock_audio_segment = Mock()
-        mock_audio_segment.duration_seconds = 60.0
-        mock_audio_segment_class.from_file.return_value = mock_audio_segment
+        mock_audio_segment.duration_seconds = 10.0
+        mock_extract_audio.return_value = mock_audio_segment
 
-        mock_segments = [Mock(duration_seconds=30.0), Mock(duration_seconds=30.0)]
+        mock_segments = [Mock(duration_seconds=5.0), Mock(duration_seconds=5.0)]
         mock_split_audio.return_value = mock_segments
 
-        mock_subtitler_instance = Mock()
-        mock_ai_subtitler.return_value = mock_subtitler_instance
-
-        mock_executor_instance = Mock()
-        mock_executor.return_value.__enter__.return_value = mock_executor_instance
-        mock_executor_instance.map.return_value = [["subtitle1"], ["subtitle2"]]
-
-        mock_subtitle_events = [Mock(), Mock()]
-        mock_merge_events.return_value = mock_subtitle_events
-
-        mock_subtitles = Mock()
-        mock_events_to_subtitles.return_value = mock_subtitles
+        mock_map.return_value = [
+            [
+                SubtitleEvent(start=1000, end=2000, text="First"),
+                SubtitleEvent(start=3000, end=4000, text="Second"),
+            ],
+            [
+                SubtitleEvent(start=1000, end=2000, text="Third"),
+                SubtitleEvent(start=3000, end=4000, text="Fourth"),
+            ],
+        ]
 
         # Run command
-        with patch("builtins.open", mock_open()) as mock_file:
-            result = self.runner.invoke(
-                main,
-                [
-                    "--verbose",
-                    "--api-key",
-                    "test_key",
-                    "--audio",
-                    str(self.test_audio_path),
-                ],
-            )
+        # Patching time.sleep to speed up the retry mechanism
+        with patch("time.sleep", lambda _: None):
+            with patch("builtins.open", mock_open()) as mock_file:
+                result = self.runner.invoke(
+                    main,
+                    [
+                        "--api-key",
+                        "test_key",
+                        "--audio",
+                        str(self.test_audio_path),
+                    ],
+                )
 
         # Assertions
-        assert result.exit_code == 0
-        mock_audio_segment_class.from_file.assert_called_once_with(
-            str(self.test_audio_path)
-        )
+        self.assertEqual(result.exit_code, 0)
         mock_split_audio.assert_called_once()
         assert "Subtitle saved at" in result.output
 
