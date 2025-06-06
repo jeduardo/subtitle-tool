@@ -18,6 +18,7 @@ from tenacity import (
     retry_if_exception_type,
     stop_after_attempt,
     retry_if_exception,
+    RetryCallState,
 )
 
 logger = logging.getLogger("subtitle_tool.ai")
@@ -27,8 +28,9 @@ DEFAULT_WAIT_TIME = 15.0
 
 def is_recoverable_exception(exception: ClientError) -> bool:
     """
-    We define as recoverable exceptions the ones that hit per-minute quotas.
-    For per-day quotas we want to abort any retries.
+    This is an overly optimistic function that deems that all exceptions
+    are recoverable except ones that fail because of exceeded daily
+    quotas.
 
     Args:
         exception (ClientError): a Gemini ClientError
@@ -36,15 +38,17 @@ def is_recoverable_exception(exception: ClientError) -> bool:
     Returns:
         bool: able to recover or not
     """
-    if exception.code == 429:
-        details = exception.details["error"]["details"]
-        for detail in details:
-            if detail.get("@type") == "type.googleapis.com/google.rpc.QuotaFailure":
-                for violation in detail.get("violations"):
-                    # e.g. minute: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
-                    # e.g. day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
-                    if "PerDay" in violation["quotaId"]:
-                        return False
+    if isinstance(exception, ClientError):
+        if exception.code == 429:
+            details = exception.details["error"]["details"]
+            for detail in details:
+                if detail.get("@type") == "type.googleapis.com/google.rpc.QuotaFailure":
+                    for violation in detail.get("violations"):
+                        # e.g. minute: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
+                        # e.g. day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+                        if "PerDay" in violation["quotaId"]:
+                            return False
+
     return True
 
 
@@ -72,7 +76,7 @@ def extract_retry_delay(exception: ClientError) -> float:
     return DEFAULT_WAIT_TIME
 
 
-def wait_api_limit(retry_state) -> float:
+def wait_api_limit(retry_state: RetryCallState) -> float:
     """
 
     Extracts the retry delay from rate limit messages.
@@ -99,7 +103,7 @@ def wait_api_limit(retry_state) -> float:
     return DEFAULT_WAIT_TIME
 
 
-def retry_handler(exception) -> bool:
+def retry_handler(exception: BaseException) -> bool:
     """
     This handler defines the cases when tenacity should retry calling the API.
     We will retry the API when:
@@ -116,11 +120,9 @@ def retry_handler(exception) -> bool:
     Returns:
         bool: True if we should retry
     """
-    return (
-        isinstance(exception, ClientError)
-        and (exception.code == 429 or exception.code == 500)
-        and is_recoverable_exception(exception)
-    ) or isinstance(exception, ServerError)
+    return isinstance(exception, ServerError) or (
+        isinstance(exception, ClientError) and is_recoverable_exception(exception)
+    )
 
 
 @dataclass
