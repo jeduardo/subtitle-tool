@@ -17,6 +17,7 @@ from subtitle_tool.ai import AISubtitler
 from subtitle_tool.audio import AudioSplitter
 from subtitle_tool.cli import main, setup_logging, API_KEY_NAME, AI_DEFAULT_MODEL
 from subtitle_tool.subtitles import SubtitleEvent
+from subtitle_tool.video import VideoProcessingError
 
 
 class TestSetupLogging(unittest.TestCase):
@@ -233,11 +234,10 @@ class TestMainCommand(unittest.TestCase):
         mock_split_audio.assert_called_once()
         self.assertIn("Subtitle saved at", result.output)
 
-    @unittest.skip("work in progress")
-    @patch("subtitle_tool.video.extract_audio")
-    def test_audio_extraction_error(self, mock_extract_audio):
+    @patch("subtitle_tool.cli.extract_audio")
+    def test_video_audio_extraction_error(self, mock_extract_audio):
         """Test error handling when audio extraction fails"""
-        mock_extract_audio.side_effect = Exception("Audio extraction failed")
+        mock_extract_audio.side_effect = VideoProcessingError("Audio extraction failed")
 
         result = self.runner.invoke(
             main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
@@ -246,13 +246,12 @@ class TestMainCommand(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Error loading audio stream", result.output)
 
-    @unittest.skip("work in progress")
-    @patch("subtitle_tool.video.extract_audio")
+    @patch("subtitle_tool.cli.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
-    @patch("subtitle_tool.ai.AISubtitler")
-    @patch("concurrent.futures.ThreadPoolExecutor")
+    @patch("subtitle_tool.cli.AISubtitler")
+    @patch.object(ThreadPoolExecutor, "map")
     def test_keyboard_interrupt_handling(
-        self, mock_executor, mock_ai_subtitler, mock_split_audio, mock_extract_audio
+        self, mock_map, mock_ai_subtitler, mock_split_audio, mock_extract_audio
     ):
         """Test graceful handling of KeyboardInterrupt"""
         # Setup mocks
@@ -266,9 +265,7 @@ class TestMainCommand(unittest.TestCase):
         mock_subtitler_instance = Mock()
         mock_ai_subtitler.return_value = mock_subtitler_instance
 
-        mock_executor_instance = Mock()
-        mock_executor.return_value.__enter__.return_value = mock_executor_instance
-        mock_executor_instance.map.side_effect = KeyboardInterrupt()
+        mock_map.side_effect = KeyboardInterrupt()
 
         result = self.runner.invoke(
             main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
