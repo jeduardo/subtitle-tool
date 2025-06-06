@@ -1,32 +1,33 @@
 #!/usr/bin/env python3
 
+from concurrent.futures import ThreadPoolExecutor
 import pytest
 import ffmpeg
 import logging
 import tempfile
 import shutil
+import unittest
 import os
 from pathlib import Path
 from unittest.mock import Mock, patch, mock_open
 from click.testing import CliRunner
-from datetime import timedelta
 from pydub import AudioSegment
 from pydub.generators import WhiteNoise
 
+from subtitle_tool.ai import AISubtitler
 from subtitle_tool.audio import AudioSplitter
-
-# Import the module under test
 from subtitle_tool.cli import main, setup_logging, API_KEY_NAME, AI_DEFAULT_MODEL
+from subtitle_tool.subtitles import SubtitleEvent
 
 
-class TestSetupLogging:
+class TestSetupLogging(unittest.TestCase):
     """Test the logging setup functionality"""
 
     def test_setup_logging_normal(self):
         """Test normal logging setup (ERROR level)"""
         setup_logging(verbose=False, debug=False)
         root_logger = logging.getLogger()
-        assert root_logger.level == logging.ERROR
+        self.assertEqual(root_logger.level, logging.ERROR)
 
     def test_setup_logging_verbose(self):
         """Test verbose logging setup (DEBUG for subtitle_tool only)"""
@@ -34,20 +35,20 @@ class TestSetupLogging:
         root_logger = logging.getLogger()
         subtitle_logger = logging.getLogger("subtitle_tool")
 
-        assert root_logger.level == logging.ERROR
-        assert subtitle_logger.level == logging.DEBUG
+        self.assertEqual(root_logger.level, logging.ERROR)
+        self.assertEqual(subtitle_logger.level, logging.DEBUG)
 
     def test_setup_logging_debug(self):
         """Test debug logging setup (DEBUG for everything)"""
         setup_logging(verbose=False, debug=True)
         root_logger = logging.getLogger()
-        assert root_logger.level == logging.DEBUG
+        self.assertEqual(root_logger.level, logging.DEBUG)
 
 
-class TestMainCommand:
+class TestMainCommand(unittest.TestCase):
     """Test the main CLI command functionality"""
 
-    def setup_method(self):
+    def setUp(self):
         """Setup for each test method"""
         self.runner = CliRunner()
         self.temp_dir = tempfile.mkdtemp()
@@ -83,7 +84,7 @@ class TestMainCommand:
         # Run ffmpeg command
         ffmpeg.run(out, overwrite_output=True, quiet=True)
 
-    def teardown_method(self):
+    def tearDown(self):
         """Cleanup after each test method"""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -135,54 +136,52 @@ class TestMainCommand:
 
     @patch("subtitle_tool.video.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
-    @patch("subtitle_tool.ai.AISubtitler")
-    @patch("concurrent.futures.ThreadPoolExecutor")
-    @patch("subtitle_tool.subtitles.merge_subtitle_events")
-    @patch("subtitle_tool.subtitles.events_to_subtitles")
-    @pytest.mark.skip(reason="work in progress")
+    @patch.object(AISubtitler, "transcribe_audio")
+    @patch.object(ThreadPoolExecutor, "map")
     def test_successful_video_processing(
         self,
-        mock_events_to_subtitles,
-        mock_merge_events,
-        mock_executor,
-        mock_ai_subtitler,
+        mock_map,
+        mock_transcribe_audio,
         mock_split_audio,
         mock_extract_audio,
     ):
         """Test successful video processing flow"""
         # Setup mocks
         mock_audio_segment = Mock()
-        mock_audio_segment.duration_seconds = 60.0
+        mock_audio_segment.duration_seconds = 10.0
         mock_extract_audio.return_value = mock_audio_segment
 
-        mock_segments = [Mock(duration_seconds=30.0), Mock(duration_seconds=30.0)]
+        mock_segments = [Mock(duration_seconds=5.0), Mock(duration_seconds=5.0)]
         mock_split_audio.return_value = mock_segments
 
-        mock_subtitler_instance = Mock()
-        mock_ai_subtitler.return_value = mock_subtitler_instance
-
-        mock_executor_instance = Mock()
-        mock_executor.return_value.__enter__.return_value = mock_executor_instance
-        mock_executor_instance.map.return_value = [["subtitle1"], ["subtitle2"]]
-
-        mock_subtitle_events = [Mock(), Mock()]
-        mock_merge_events.return_value = mock_subtitle_events
-
-        mock_subtitles = Mock()
-        mock_events_to_subtitles.return_value = mock_subtitles
+        mock_map.return_value = [
+            [
+                SubtitleEvent(start=1000, end=2000, text="First"),
+                SubtitleEvent(start=3000, end=4000, text="Second"),
+            ],
+            [
+                SubtitleEvent(start=1000, end=2000, text="Third"),
+                SubtitleEvent(start=3000, end=4000, text="Fourth"),
+            ],
+        ]
 
         # Run command
-        with patch("builtins.open", mock_open()) as mock_file:
-            result = self.runner.invoke(
-                main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
-            )
+        # Patching time.sleep to speed up the retry mechanism
+        with patch("time.sleep", lambda _: None):
+            with patch("builtins.open", mock_open()) as mock_file:
+                result = self.runner.invoke(
+                    main,
+                    [
+                        "--api-key",
+                        "test_key",
+                        "--video",
+                        str(self.test_video_path),
+                    ],
+                )
 
         # Assertions
-        assert result.exit_code == 0
-        mock_extract_audio.assert_called_once_with(str(self.test_video_path))
+        self.assertEqual(result.exit_code, 0)
         mock_split_audio.assert_called_once()
-        mock_ai_subtitler.assert_called_once()
-        mock_subtitles.to_file.assert_called_once()
         assert "Subtitle saved at" in result.output
 
     @patch("pydub.AudioSegment")
