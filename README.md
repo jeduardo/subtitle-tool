@@ -1,5 +1,7 @@
 # Subtitle tool
 
+[![codecov](https://codecov.io/gh/jeduardo/subtitle-tool/graph/badge.svg?token=TPA3UXF5OC)](https://codecov.io/gh/jeduardo/subtitle-tool)
+
 This utility uses Google Gemini to generate subtitles to audio and video files.
 
 ## Dependencies
