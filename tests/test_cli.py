@@ -274,13 +274,12 @@ class TestMainCommand(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Control-C pressed", result.output)
 
-    @unittest.skip("work in progress")
-    @patch("subtitle_tool.video.extract_audio")
+    @patch("subtitle_tool.cli.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
     @patch.object(AISubtitler, "transcribe_audio")
     @patch.object(ThreadPoolExecutor, "map")
-    @patch("subtitle_tool.subtitles.merge_subtitle_events")
-    @patch("subtitle_tool.subtitles.events_to_subtitles")
+    @patch("subtitle_tool.cli.merge_subtitle_events")
+    @patch("subtitle_tool.cli.events_to_subtitles")
     @patch("shutil.move")
     def test_existing_subtitle_backup(
         self,
@@ -331,55 +330,6 @@ class TestMainCommand(unittest.TestCase):
 
         self.assertNotIn("API key not informed", result.output)
 
-    @unittest.skip("work in progress")
-    def test_custom_ai_model(self):
-        """Test that custom AI model parameter is accepted"""
-        custom_model = "custom-model-name"
-
-        with patch("subtitle_tool.video.extract_audio") as mock_extract:
-            mock_extract.side_effect = Exception("Stopping early for test")
-
-            result = self.runner.invoke(
-                main,
-                [
-                    "--api-key",
-                    "test_key",
-                    "--ai-model",
-                    custom_model,
-                    "--video",
-                    str(self.test_video_path),
-                ],
-            )
-
-            # The test should fail at audio extraction, not at model validation
-            self.assertNotEqual(result.exit_code, 0)
-            self.assertIn("Error loading audio stream", result.output)
-
-    @unittest.skip("work in progress")
-    def test_keep_temp_files_flag(self):
-        """Test that keep-temp-files flag is properly passed"""
-        with (
-            patch("subtitle_tool.video.extract_audio") as mock_extract,
-            patch("subtitle_tool.ai.AISubtitler") as mock_ai_subtitler,
-        ):
-
-            mock_extract.side_effect = Exception("Stopping early for test")
-
-            result = self.runner.invoke(
-                main,
-                [
-                    "--api-key",
-                    "test_key",
-                    "--keep-temp-files",
-                    "--video",
-                    str(self.test_video_path),
-                ],
-            )
-
-            # Check that the flag doesn't cause parsing errors
-            self.assertNotEqual(result.exit_code, 0)  # Should fail on audio extraction
-            self.assertIn("Error loading audio stream", result.output)
-
     def test_verbose_and_debug_flags(self):
         """Test that verbose and debug flags work"""
         # Test verbose flag
@@ -427,6 +377,60 @@ class TestErrorHandling(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn("Error: ", result.output)
+
+    @patch("subtitle_tool.cli.extract_audio")
+    @patch.object(AudioSplitter, "split_audio")
+    @patch("subtitle_tool.cli.AISubtitler")
+    def test_internal_error_verbose_stack_trace(
+        self, mock_ai_subtitler, mock_split_audio, mock_extract_audio
+    ):
+        """Test that internal errors echo stack trace on verbose mode"""
+        mock_extract_audio.side_effect = RuntimeError("Unexpected internal error")
+
+        result = self.runner.invoke(
+            main,
+            [
+                "--api-key",
+                "test_key",
+                "--video",
+                str(self.test_video_path),
+                "--verbose",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn(
+            "Internal error: RuntimeError('Unexpected internal error')", result.output
+        )
+        self.assertIn("Traceback (most recent call last):", result.output)
+        self.assertIn("RuntimeError: Unexpected internal error", result.output)
+
+    @patch("subtitle_tool.cli.extract_audio")
+    @patch.object(AudioSplitter, "split_audio")
+    @patch("subtitle_tool.cli.AISubtitler")
+    def test_internal_error_debug_stack_trace(
+        self, mock_ai_subtitler, mock_split_audio, mock_extract_audio
+    ):
+        """Test that internal errors echo stack trace on debug mode"""
+        mock_extract_audio.side_effect = RuntimeError("Unexpected internal error")
+
+        result = self.runner.invoke(
+            main,
+            [
+                "--api-key",
+                "test_key",
+                "--video",
+                str(self.test_video_path),
+                "--debug",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn(
+            "Internal error: RuntimeError('Unexpected internal error')", result.output
+        )
+        self.assertIn("Traceback (most recent call last):", result.output)
+        self.assertIn("RuntimeError: Unexpected internal error", result.output)
 
 
 if __name__ == "__main__":
