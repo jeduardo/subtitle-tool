@@ -1,11 +1,12 @@
 import unittest
 import ffmpeg
 import tempfile
+import pytest
 
 from pydub import AudioSegment
 from pydub.generators import WhiteNoise
 
-from subtitle_tool.video import extract_audio
+from subtitle_tool.video import VideoProcessingError, extract_audio
 
 
 class TestVideo(unittest.TestCase):
@@ -123,6 +124,46 @@ class TestVideo(unittest.TestCase):
                 result.duration_seconds,
                 audio_segment.duration_seconds,
                 places=1,  # Allow small differences due to encoding
+            )
+
+    def test_extract_audio_empty_path(self):
+        with pytest.raises(VideoProcessingError) as exc_info:
+            extract_audio("")
+        self.assertEqual(exc_info.value.args[0], "Path to video file is mandatory")
+
+    def test_extract_audio_invalid_file(self):
+        with tempfile.NamedTemporaryFile(suffix=".mkv") as tmp_video:
+            with pytest.raises(VideoProcessingError) as exc_info:
+                extract_audio(tmp_video.name)
+            self.assertEqual(exc_info.value.args[0], "Error probing for file metadata")
+
+    def test_extract_audio_no_audio_streams(self):
+        with tempfile.NamedTemporaryFile(suffix=".mkv") as tmp_video:
+            # Inputs
+            video_input = ffmpeg.input(
+                "color=black:s=1280x720:d=8:rate=30",  # 8 seconds black
+                f="lavfi",
+            )
+
+            # MKV container with H.264 video and Opus audio
+            out = ffmpeg.output(
+                video_input,
+                tmp_video.name,
+                vcodec="libx264",
+                acodec="libopus",
+                pix_fmt="yuv420p",
+                shortest=None,
+                # MKV doesn't use movflags
+            )
+
+            # Run ffmpeg command
+            ffmpeg.run(out, overwrite_output=True, quiet=True)
+
+            with pytest.raises(VideoProcessingError) as exc_info:
+                extract_audio(tmp_video.name)
+            self.assertEqual(
+                exc_info.value.args[0],
+                f"No audio streams found in file {tmp_video.name}",
             )
 
 

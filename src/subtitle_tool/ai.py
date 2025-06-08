@@ -18,6 +18,8 @@ from tenacity import (
     retry_if_exception_type,
     stop_after_attempt,
     retry_if_exception,
+    RetryCallState,
+    wait_exponential,
 )
 
 logger = logging.getLogger("subtitle_tool.ai")
@@ -27,8 +29,9 @@ DEFAULT_WAIT_TIME = 15.0
 
 def is_recoverable_exception(exception: ClientError) -> bool:
     """
-    We define as recoverable exceptions the ones that hit per-minute quotas.
-    For per-day quotas we want to abort any retries.
+    This is an overly optimistic function that deems that all exceptions
+    are recoverable except ones that fail because of exceeded daily
+    quotas.
 
     Args:
         exception (ClientError): a Gemini ClientError
@@ -36,18 +39,21 @@ def is_recoverable_exception(exception: ClientError) -> bool:
     Returns:
         bool: able to recover or not
     """
-    details = exception.details["error"]["details"]
-    for detail in details:
-        if detail.get("@type") == "type.googleapis.com/google.rpc.QuotaFailure":
-            for violation in detail.get("violations"):
-                # e.g. minute: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
-                # e.g. day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
-                if "PerDay" in violation["quotaId"]:
-                    return False
+    if isinstance(exception, ClientError):
+        if exception.code == 429:
+            details = exception.details["error"]["details"]
+            for detail in details:
+                if detail.get("@type") == "type.googleapis.com/google.rpc.QuotaFailure":
+                    for violation in detail.get("violations"):
+                        # e.g. minute: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
+                        # e.g. day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+                        if "PerDay" in violation["quotaId"]:
+                            return False
+
     return True
 
 
-def extract_retry_delay_from_message(exception: ClientError) -> float:
+def extract_retry_delay(exception: ClientError) -> float:
     """
     Extract retry delay from rate-limit message.
     It will return 60 seconds on parsing error.
@@ -71,7 +77,7 @@ def extract_retry_delay_from_message(exception: ClientError) -> float:
     return DEFAULT_WAIT_TIME
 
 
-def wait_api_limit(retry_state) -> float:
+def wait_api_limit(retry_state: RetryCallState) -> float:
     """
 
     Extracts the retry delay from rate limit messages.
@@ -88,7 +94,7 @@ def wait_api_limit(retry_state) -> float:
 
         if isinstance(exception, ClientError):
             if exception.code == 429:
-                delay = extract_retry_delay_from_message(exception)
+                delay = extract_retry_delay(exception)
                 logger.debug(
                     f"Rate limit hit, sleeping for {delay} seconds as suggested by API"
                 )
@@ -98,16 +104,16 @@ def wait_api_limit(retry_state) -> float:
     return DEFAULT_WAIT_TIME
 
 
-def retry_handler(exception) -> bool:
+def retry_handler(exception: BaseException) -> bool:
     """
     This handler defines the cases when tenacity should retry calling the API.
     We will retry the API when:
     - It's an error issued by the Gemini Client
     - It's a 500 INTERNAL error, which Gemini sometimes issues and they recommend to retry.
     - It's a 429 rate limit error for quotas that are replenished by the minute.
-    - It's a Server error. 
+    - It's a Server error.
     For all other issues, we will not ask tenacity to retry.
-    
+
 
     Args:
         exception: The exception that occurred
@@ -115,11 +121,9 @@ def retry_handler(exception) -> bool:
     Returns:
         bool: True if we should retry
     """
-    return (
-        isinstance(exception, ClientError)
-        and (exception.code == 429 or exception.code == 500)
-        and is_recoverable_exception(exception)
-    ) or isinstance(exception, ServerError)
+    return isinstance(exception, ServerError) or (
+        isinstance(exception, ClientError) and is_recoverable_exception(exception)
+    )
 
 
 @dataclass
@@ -212,6 +216,38 @@ class AISubtitler(object):
 
         """
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=1, max=5),
+        stop=stop_after_attempt(5),
+        before_sleep=before_sleep_log(logger, logging.DEBUG),
+        reraise=True,
+    )
+    def _upload_file(self, file_name: str):
+        """
+        Wrapper to retry file uploads to the Gemini file server.
+        It will apply exponential backoff for retries and try it for 5 times.
+
+        Args:
+            file_name (str): Path to file to be uploaded
+        """
+        client = genai.Client(api_key=self.api_key)
+        return client.files.upload(file=file_name)  # type: ignore
+
+    def _remove_file(self, ref_name: str):
+        """
+        Wrapper to remove files from the Gemini file server.
+
+        Args:
+            ref_name (str): Upload reference
+        """
+        try:
+            client = genai.Client(api_key=self.api_key)
+            client.files.delete(name=ref_name)
+        except Exception as e:
+            # Google deletes the files in 48h, so cleanup is a courtesy.
+            # This means we just issue a warning here.
+            logger.warning(f"Error while removing uploaded file {ref_name}: {e!r}")
+
     @contextmanager
     def upload_audio(self, segment: AudioSegment):
         """
@@ -235,14 +271,13 @@ class AISubtitler(object):
             segment.export(temp_file.name, format="wav")
             logger.debug(f"Audio segment exported to {temp_file.name}")
 
-            # Upload the temporary file (API will infer mime type from extension)
-            client = genai.Client(api_key=self.api_key)
-            ref = client.files.upload(file=temp_file.name)  # type: ignore
+            # Upload the temporary file (API will infer mime type from content)
+            ref = self._upload_file(temp_file.name)
             logger.debug(f"Temporary file {temp_file.name} uploaded as {ref.name}")
             try:
                 yield ref
             finally:
-                client.files.delete(name=f"{ref.name}")
+                self._remove_file(f"{ref.name}")
                 logger.debug(
                     f"Removed temporary file {temp_file.name} upload {ref.name}"
                 )

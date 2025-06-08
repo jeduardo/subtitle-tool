@@ -8,6 +8,10 @@ from pydub import AudioSegment
 logger = logging.getLogger("subtitle_tool.video")
 
 
+class VideoProcessingError(Exception):
+    pass
+
+
 def extract_audio(video_path: str) -> AudioSegment:
     """
     Extract an audio stream from the video file.
@@ -22,13 +26,17 @@ def extract_audio(video_path: str) -> AudioSegment:
         AudioSegment: in-memory representation of the extracted audio stream.
     """
     if not video_path:
-        raise Exception("Path to video file is mandatory")
+        raise VideoProcessingError("Path to video file is mandatory")
 
-    probe = ffmpeg.probe(video_path)
+    try:
+        probe = ffmpeg.probe(video_path)
+    except ffmpeg.Error as e:
+        logger.error(f"Error probing for file metadata: {e}")
+        raise VideoProcessingError("Error probing for file metadata") from e
+
     audio_streams = [s for s in probe["streams"] if s["codec_type"] == "audio"]
-
     if not audio_streams:
-        raise Exception("No audio streams found")
+        raise VideoProcessingError(f"No audio streams found in file {video_path}")
 
     audio_stream = audio_streams[0]
     audio_codec = audio_stream.get("codec_name", "")
@@ -48,7 +56,7 @@ def extract_audio(video_path: str) -> AudioSegment:
     # Check the return code instead of stderr content
     if process.returncode != 0:
         logger.error(f"Extraction error with ffmpeg: {err.decode()}")
-        raise Exception(f"Extraction error: {err.decode()}")
+        raise VideoProcessingError(f"Extraction error: {err.decode()}")
 
     audio_buffer = io.BytesIO(out)
 
