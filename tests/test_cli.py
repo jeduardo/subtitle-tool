@@ -182,7 +182,7 @@ class TestMainCommand(unittest.TestCase):
         # Assertions
         self.assertEqual(result.exit_code, 0)
         mock_split_audio.assert_called_once()
-        self.assertIn("Subtitle saved at", result.output)
+        self.assertIn("Subtitles saved at", result.output)
 
     @patch("subtitle_tool.video.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
@@ -232,7 +232,7 @@ class TestMainCommand(unittest.TestCase):
         # Assertions
         self.assertEqual(result.exit_code, 0)
         mock_split_audio.assert_called_once()
-        self.assertIn("Subtitle saved at", result.output)
+        self.assertIn("Subtitles saved at", result.output)
 
     @patch("subtitle_tool.cli.extract_audio")
     def test_video_audio_extraction_error(self, mock_extract_audio):
