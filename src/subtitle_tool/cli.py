@@ -7,7 +7,7 @@ import traceback
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from humanize.time import naturaldelta, precisedelta
+from humanize.time import precisedelta
 from pathlib import Path
 from subtitle_tool.ai import AISubtitler
 from subtitle_tool.audio import AudioSplitter
@@ -149,7 +149,7 @@ def main(
     if not audio and not video or audio and video:
         raise click.MissingParameter(f"Either --video or --audio need to be specified")
 
-    click.echo(f"Generating subtitle for {video if video else audio}")
+    click.echo(f"Generating subtitles for {video if video else audio}")
 
     executor = None
 
@@ -209,9 +209,20 @@ def main(
         # 8. Output processing info
         end = time.time()
         duration = timedelta(seconds=round(end - start, 2))
+        metrics = subtitler.metrics
+
         click.echo(
-            f"Subtitle saved at {subtitle_path} (Processed for {naturaldelta(duration)})"
+            f"AI tokens used: {metrics.input_token_count} input / {metrics.output_token_count} output"
         )
+        click.echo(
+            f"AI errors: {metrics.client_errors} client / {metrics.server_errors} server"
+        )
+        click.echo(
+            f"AI calls: {metrics.throttles} throttled / {metrics.retries} retried"
+        )
+        click.echo(f"Processing time: {precisedelta(duration)}")
+        click.echo(f"Subtitles saved at {subtitle_path}")
+
     except click.ClickException:
         # Re-raise them for click to handle
         raise
