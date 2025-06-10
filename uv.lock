@@ -449,7 +449,7 @@ wheels = [
 
 [[package]]
 name = "subtitle-tool"
-version = "0.1.5"
+version = "0.1.12"
 source = { editable = "." }
 dependencies = [
     { name = "audioop-lts" },

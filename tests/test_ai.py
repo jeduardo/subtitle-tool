@@ -1,5 +1,6 @@
 import unittest
 import json
+import logging
 
 from unittest.mock import MagicMock, Mock, patch
 from google.genai.errors import ClientError, ServerError
@@ -10,12 +11,13 @@ from subtitle_tool.subtitles import SubtitleEvent
 
 from subtitle_tool.ai import (
     AISubtitler,
-    is_recoverable_exception,
-    extract_retry_delay,
-    wait_api_limit,
-    retry_handler,
     DEFAULT_WAIT_TIME,
 )
+
+
+# Running tests in DEBUG will help to troubleshoot errors on changes
+logging.getLogger("subtitle_tool").setLevel(logging.DEBUG)
+
 
 CLIENT_ERROR_429_RATE_LIMIT_MINUTE = """
 {
@@ -127,82 +129,91 @@ SERVER_ERROR_503_UNAVAILABLE = """
 
 class TestIsRecoverable(unittest.TestCase):
 
+    def setUp(self) -> None:
+        self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
+
     def test_client_rate_limit_per_minute(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_MINUTE)
         )
-        self.assertTrue(is_recoverable_exception(error))
+        self.assertTrue(self.subtitler._is_recoverable_exception(error))
 
     def test_client_rate_limit_per_day(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_DAY)
         )
-        self.assertFalse(is_recoverable_exception(error))
+        self.assertFalse(self.subtitler._is_recoverable_exception(error))
 
     def test_client_auth_error(self):
         error = ClientError(code=403, response_json=json.loads(CLIENT_ERROR_403_AUTH))
-        self.assertTrue(is_recoverable_exception(error))
+        self.assertTrue(self.subtitler._is_recoverable_exception(error))
 
     def test_server_internal_error(self):
         error = ServerError(
             code=500, response_json=json.loads(SERVER_ERROR_500_INTERNAL)
         )
-        self.assertTrue(is_recoverable_exception(error))  # type: ignore
+        self.assertTrue(self.subtitler._is_recoverable_exception(error))  # type: ignore
 
     def test_server_unavailable_error(self):
         error = ServerError(
             code=503, response_json=json.loads(SERVER_ERROR_503_UNAVAILABLE)
         )
-        self.assertTrue(is_recoverable_exception(error))  # type: ignore
+        self.assertTrue(self.subtitler._is_recoverable_exception(error))  # type: ignore
 
     def test_generic_exception(self):
         error = Exception("Generic Exception")
-        self.assertTrue(is_recoverable_exception(error))  # type: ignore
+        self.assertTrue(self.subtitler._is_recoverable_exception(error))  # type: ignore
 
 
 class TestExtractRetryDelay(unittest.TestCase):
 
+    def setUp(self) -> None:
+        self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
+
     def test_client_rate_limit_per_minute(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_MINUTE)
         )
-        delay = extract_retry_delay(error)
+        delay = self.subtitler._extract_retry_delay(error)
         self.assertEqual(delay, 33.0)
 
     def test_client_rate_limit_per_day(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_DAY)
         )
-        delay = extract_retry_delay(error)
+        delay = self.subtitler._extract_retry_delay(error)
         self.assertEqual(delay, 33.0)
 
     def test_client_auth_error(self):
         error = ClientError(code=403, response_json=json.loads(CLIENT_ERROR_403_AUTH))
-        delay = extract_retry_delay(error)
+        delay = self.subtitler._extract_retry_delay(error)
         self.assertEqual(delay, DEFAULT_WAIT_TIME)
 
     def test_server_internal_error(self):
         error = ServerError(
             code=500, response_json=json.loads(SERVER_ERROR_500_INTERNAL)
         )
-        delay = extract_retry_delay(error)  # type: ignore
+        delay = self.subtitler._extract_retry_delay(error)  # type: ignore
         self.assertEqual(delay, DEFAULT_WAIT_TIME)
 
     def test_server_unavailable_error(self):
         error = ServerError(
             code=503, response_json=json.loads(SERVER_ERROR_503_UNAVAILABLE)
         )
-        delay = extract_retry_delay(error)  # type: ignore
+        delay = self.subtitler._extract_retry_delay(error)  # type: ignore
         self.assertEqual(delay, DEFAULT_WAIT_TIME)
 
     def test_generic_exception(self):
         error = Exception("Generic exception")
-        delay = extract_retry_delay(error)  # type: ignore
+        delay = self.subtitler._extract_retry_delay(error)  # type: ignore
         self.assertEqual(delay, DEFAULT_WAIT_TIME)
 
 
 class TestWaitApiLimit(unittest.TestCase):
 
+    def setUp(self) -> None:
+        self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
+
     def test_client_rate_limit_per_minute(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_MINUTE)
@@ -215,7 +226,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = wait_api_limit(retry_state)
+        result = self.subtitler._wait_api_limit(retry_state)
         self.assertEqual(result, 33.0)
 
     def test_client_rate_limit_per_day(self):
@@ -230,7 +241,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = wait_api_limit(retry_state)
+        result = self.subtitler._wait_api_limit(retry_state)
         self.assertEqual(result, 33.0)
 
     def test_client_auth_error(self):
@@ -243,7 +254,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = wait_api_limit(retry_state)
+        result = self.subtitler._wait_api_limit(retry_state)
         self.assertEqual(result, DEFAULT_WAIT_TIME)
 
     def test_server_internal_error(self):
@@ -258,7 +269,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = wait_api_limit(retry_state)
+        result = self.subtitler._wait_api_limit(retry_state)
         self.assertEqual(result, DEFAULT_WAIT_TIME)
 
     def test_server_unavailable_error(self):
@@ -273,7 +284,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = wait_api_limit(retry_state)
+        result = self.subtitler._wait_api_limit(retry_state)
         self.assertEqual(result, DEFAULT_WAIT_TIME)
 
     def test_generic_exception(self):
@@ -286,43 +297,46 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = wait_api_limit(retry_state)
+        result = self.subtitler._wait_api_limit(retry_state)
         self.assertEqual(result, DEFAULT_WAIT_TIME)
 
 
 class TestRetryHandler(unittest.TestCase):
 
+    def setUp(self) -> None:
+        self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
+
     def test_client_rate_limit_per_minute(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_MINUTE)
         )
-        result = retry_handler(error)
+        result = self.subtitler._ai_retry_handler(error)
         self.assertTrue(result)
 
     def test_client_rate_limit_per_day(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_DAY)
         )
-        result = retry_handler(error)
+        result = self.subtitler._ai_retry_handler(error)
         self.assertFalse(result)
 
     def test_client_auth_error(self):
         error = ClientError(code=403, response_json=json.loads(CLIENT_ERROR_403_AUTH))
-        result = retry_handler(error)
+        result = self.subtitler._ai_retry_handler(error)
         self.assertTrue(result)
 
     def test_server_internal_error(self):
         error = ServerError(
             code=500, response_json=json.loads(SERVER_ERROR_500_INTERNAL)
         )
-        result = retry_handler(error)
+        result = self.subtitler._ai_retry_handler(error)
         self.assertTrue(result)
 
     def test_server_unavailable_error(self):
         error = ServerError(
             code=503, response_json=json.loads(SERVER_ERROR_503_UNAVAILABLE)
         )
-        result = retry_handler(error)
+        result = self.subtitler._ai_retry_handler(error)
         self.assertTrue(result)
 
 
@@ -578,10 +592,11 @@ class TestAISubtitler(unittest.TestCase):
         mock_client.files.upload.return_value = mock_ref
 
         mock_response_usage_metadata = Mock()
-        mock_response_usage_metadata.cache_tokens_details = "0"
-        mock_response_usage_metadata.cached_content_token_count = "0"
-        mock_response_usage_metadata.thoughts_token_count = "0"
-        mock_response_usage_metadata.candidates_token_count = "0"
+        mock_response_usage_metadata.cache_tokens_details = "Internal object"
+        mock_response_usage_metadata.cached_content_token_count = 0
+        mock_response_usage_metadata.prompt_token_count = 0
+        mock_response_usage_metadata.thoughts_token_count = 0
+        mock_response_usage_metadata.candidates_token_count = 0
 
         mock_response = Mock()
         mock_response.usage_metadata = mock_response_usage_metadata
@@ -594,6 +609,206 @@ class TestAISubtitler(unittest.TestCase):
 
         result = self.subtitler.transcribe_audio(self.mock_audio_segment)
         self.assertEqual(len(result), 2)
+
+
+class TestMetrics(unittest.TestCase):
+    def setUp(self):
+        self.mock_audio_segment = Mock(spec=AudioSegment)
+        self.mock_audio_segment.duration_seconds = 10.0
+        self.api_key = "test_api_key"
+
+        self.mock_response_usage_metadata = Mock()
+        self.mock_response_usage_metadata.cache_tokens_details = "Internal object"
+        self.mock_response_usage_metadata.cached_content_token_count = 0
+        self.mock_response_usage_metadata.prompt_token_count = 1000
+        self.mock_response_usage_metadata.thoughts_token_count = 2000
+        self.mock_response_usage_metadata.candidates_token_count = 2000
+
+        # Instantiate the actual class
+        self.subtitler = AISubtitler(
+            api_key=self.api_key, model_name="test_model", delete_temp_files=True
+        )
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_input_output(self, mock_client_class, mock_temp_file):
+        # Setup mocks needed for the method to operate
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        mock_response = Mock()
+        mock_response.usage_metadata = self.mock_response_usage_metadata
+        mock_response.parsed = [
+            SubtitleEvent(start=1000, end=2000, text="First"),
+            SubtitleEvent(start=3000, end=4000, text="Second"),
+        ]
+
+        mock_client.models.generate_content.return_value = mock_response
+
+        self.subtitler.transcribe_audio(self.mock_audio_segment)
+        metrics = self.subtitler.metrics
+        self.assertEqual(metrics.input_token_count, 1000)
+        self.assertEqual(metrics.output_token_count, 4000)
+        self.assertEqual(metrics.client_errors, 0)
+        self.assertEqual(metrics.server_errors, 0)
+        self.assertEqual(metrics.invalid_subtitles, 0)
+        self.assertEqual(metrics.throttles, 0)
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_client_errors(self, mock_client_class, mock_temp_file):
+        # Setup mocks needed for the method to operate
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_client.models.generate_content.side_effect = ClientError(
+            code=403, response_json=json.loads(CLIENT_ERROR_403_AUTH)
+        )
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        # Error control for Gemini will retry 10 times
+        expected_client_errors = 10
+        with patch("time.sleep", lambda _: None):
+            with self.assertRaises(Exception) as context:
+                self.subtitler.transcribe_audio(self.mock_audio_segment)
+                self.fail("Should never get here")
+
+        metrics = self.subtitler.metrics
+        self.assertEqual(metrics.input_token_count, 0)
+        self.assertEqual(metrics.output_token_count, 0)
+        self.assertEqual(metrics.client_errors, expected_client_errors)
+        self.assertEqual(metrics.server_errors, 0)
+        self.assertEqual(metrics.invalid_subtitles, 0)
+        self.assertEqual(metrics.throttles, 0)
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_server_errors(self, mock_client_class, mock_temp_file):
+        # Setup mocks needed for the method to operate
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_client.models.generate_content.side_effect = ServerError(
+            code=503, response_json=json.loads(SERVER_ERROR_503_UNAVAILABLE)
+        )
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        # Error control for Gemini will retry 10 times
+        expected_server_errors = 10
+        with patch("time.sleep", lambda _: None):
+            with self.assertRaises(Exception) as context:
+                self.subtitler.transcribe_audio(self.mock_audio_segment)
+                self.fail("Should never get here")
+
+        metrics = self.subtitler.metrics
+        self.assertEqual(metrics.input_token_count, 0)
+        self.assertEqual(metrics.output_token_count, 0)
+        self.assertEqual(metrics.client_errors, 0)
+        self.assertEqual(metrics.server_errors, expected_server_errors)
+        self.assertEqual(metrics.invalid_subtitles, 0)
+        self.assertEqual(metrics.throttles, 0)
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_throttles(self, mock_client_class, mock_temp_file):
+        # Setup mocks needed for the method to operate
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_client.models.generate_content.side_effect = ClientError(
+            code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_MINUTE)
+        )
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        # Error control for Gemini will retry 10 times
+        expected_throttles = 10
+        with patch("time.sleep", lambda _: None):
+            with self.assertRaises(Exception) as context:
+                self.subtitler.transcribe_audio(self.mock_audio_segment)
+                self.fail("Should never get here")
+
+        metrics = self.subtitler.metrics
+        self.assertEqual(metrics.input_token_count, 0)
+        self.assertEqual(metrics.output_token_count, 0)
+        self.assertEqual(metrics.client_errors, 0)
+        self.assertEqual(metrics.server_errors, 0)
+        self.assertEqual(metrics.invalid_subtitles, 0)
+        self.assertEqual(metrics.throttles, expected_throttles)
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_invalid_subtitles(self, mock_client_class, mock_temp_file):
+        # Setup mocks needed for the method to operate
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        mock_response = Mock()
+        mock_response.usage_metadata = self.mock_response_usage_metadata
+        mock_response.parsed = [
+            SubtitleEvent(start=1000, end=2000, text="First"),
+            SubtitleEvent(start=1000, end=2000, text="Second"),
+        ]
+
+        mock_client.models.generate_content.return_value = mock_response
+
+        # The complete subtitle generation process will try for 10 times before giving up.
+        expected_invalid_subtitles = 10
+        with patch("time.sleep", lambda _: None):
+            with self.assertRaises(Exception) as context:
+                self.subtitler.transcribe_audio(self.mock_audio_segment)
+                self.fail("Should never get here")
+
+        metrics = self.subtitler.metrics
+        # 10 times with 1000 tokens
+        self.assertEqual(metrics.input_token_count, 10000)
+        # 10 times with 2000 tokens + 2000 thinking tokens
+        self.assertEqual(metrics.output_token_count, 40000)
+        self.assertEqual(metrics.client_errors, 0)
+        self.assertEqual(metrics.server_errors, 0)
+        self.assertEqual(metrics.invalid_subtitles, expected_invalid_subtitles)
+        self.assertEqual(metrics.throttles, 0)
 
 
 if __name__ == "__main__":
