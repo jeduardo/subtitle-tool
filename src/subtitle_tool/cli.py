@@ -11,7 +11,11 @@ from humanize.time import precisedelta
 from pathlib import Path
 from subtitle_tool.ai import AISubtitler
 from subtitle_tool.audio import AudioSplitter
-from subtitle_tool.subtitles import events_to_subtitles, merge_subtitle_events
+from subtitle_tool.subtitles import (
+    equalize_subtitles,
+    events_to_subtitles,
+    merge_subtitle_events,
+)
 from subtitle_tool.video import extract_audio, VideoProcessingError
 from pydub import AudioSegment
 
@@ -165,7 +169,9 @@ def main(
         click.echo(f"Audio loaded ({precisedelta(int(audio_stream.duration_seconds))})")
 
         # 2. Split the audio stream into 30-second segments
-        click.echo(f"Segmenting audio stream in {audio_segment_length} chunks...")
+        click.echo(
+            f"Segmenting audio stream in {audio_segment_length} {"second" if audio_segment_length <= 1 else "seconds"} chunks..."
+        )
         segments = AudioSplitter().split_audio(
             audio_stream, segment_length=audio_segment_length
         )
@@ -191,7 +197,9 @@ def main(
         subtitle_events = merge_subtitle_events(subtitle_groups, segment_durations)
 
         # 5. Convert subtitle events into subtitle file
-        subtitles = events_to_subtitles(subtitle_events)
+        ai_subtitles = events_to_subtitles(subtitle_events)
+        subtitles = equalize_subtitles(ai_subtitles)
+        click.echo("New subtitle adjusted for viewing")
 
         # 6. Backup existing subtitle (if exists)
         if not subtitle_path:
@@ -211,6 +219,7 @@ def main(
         duration = timedelta(seconds=round(end - start, 2))
         metrics = subtitler.metrics
 
+        click.echo(f"Subtitle generation retries: {metrics.invalid_subtitles}")
         click.echo(
             f"AI tokens used: {metrics.input_token_count} input / {metrics.output_token_count} output"
         )
@@ -223,13 +232,12 @@ def main(
         click.echo(f"Processing time: {precisedelta(duration)}")
         click.echo(f"Subtitles saved at {subtitle_path}")
 
-    except click.ClickException:
+    except click.ClickException as e:
         # Re-raise them for click to handle
         raise
     except Exception as e:
         click.echo(f"Internal error: {e!r}", err=True)
-        if debug or verbose:
-            click.echo(traceback.format_exc())
+        click.echo(traceback.format_exc())
         if executor:
             click.echo("Force-stopping all transcription tasks...", nl=False)
             executor.shutdown(wait=True, cancel_futures=True)

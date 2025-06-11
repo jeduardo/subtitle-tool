@@ -448,8 +448,26 @@ wheels = [
 ]
 
 [[package]]
+name = "srt"
+version = "3.5.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/b7/4a1bc231e0681ebf339337b0cd05b91dc6a0d701fa852bb812e244b7a030/srt-3.5.3.tar.gz", hash = "sha256:4884315043a4f0740fd1f878ed6caa376ac06d70e135f306a6dc44632eed0cc0", size = 28296, upload-time = "2023-03-28T02:35:44.007Z" }
+
+[[package]]
+name = "srt-equalizer"
+version = "0.1.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "srt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/60/0ef6d49662e1b8d30e54a35b77ea8183ca85a7b9cf7d1ec836cc07450551/srt_equalizer-0.1.10.tar.gz", hash = "sha256:5f6b1b2c48b12bb1caab13822d7ddd0a54a87772b824a0aa2ba64c033d379353", size = 5189, upload-time = "2024-08-03T07:27:46.295Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/79/580db2774a371dc5ec7c71fbd841909d8e76f5ba97d2b4cd55f6fcf7a80e/srt_equalizer-0.1.10-py3-none-any.whl", hash = "sha256:7b0cca73374ff7351badf2dc5266cabefdfd36b91ff736a535445562036cf8ed", size = 5943, upload-time = "2024-08-03T07:27:44.938Z" },
+]
+
+[[package]]
 name = "subtitle-tool"
-version = "0.1.12"
+version = "0.1.13"
 source = { editable = "." }
 dependencies = [
     { name = "audioop-lts" },
@@ -459,6 +477,7 @@ dependencies = [
     { name = "humanize" },
     { name = "pydub" },
     { name = "pysubs2" },
+    { name = "srt-equalizer" },
     { name = "tenacity" },
 ]
 
@@ -477,6 +496,7 @@ requires-dist = [
     { name = "humanize", specifier = ">=4.12.3" },
     { name = "pydub", specifier = ">=0.25.1" },
     { name = "pysubs2", specifier = ">=1.8.0" },
+    { name = "srt-equalizer", specifier = ">=0.1.10" },
     { name = "tenacity", specifier = ">=9.1.2" },
 ]
 
