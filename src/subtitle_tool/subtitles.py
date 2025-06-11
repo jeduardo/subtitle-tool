@@ -1,11 +1,12 @@
 import json
 import logging
-import re
+import tempfile
 
 from functools import reduce
 from humanize.time import precisedelta
 from pydantic import BaseModel, Field, ConfigDict
 from pysubs2 import SSAFile, SSAEvent
+from srt_equalizer import srt_equalizer
 
 logger = logging.getLogger("subtitle_tool.subtitles")
 
@@ -130,15 +131,18 @@ def save_to_json(subtitles: list[SubtitleEvent], path):
 
 
 def merge_subtitle_events(
-    subtitle_groups: list[list[SubtitleEvent]], segment_durations: list[float]
+    subtitle_groups: list[list[SubtitleEvent]],
+    segment_durations: list[float],
+    clean_newlines=True,
 ) -> list[SubtitleEvent]:
     """
     Join several groups of subtitle events into a single stream of events,
-    adjusting the timestamps.
+    adjusting the timestamps and removing newlines from the existing events.
 
     Args:
         subtitle_groups (list[list[SubtitleEvent]]): groups of subtitles
         segment_durations (list[float]): how long each segment lasts (in seconds)
+        clean_newlines (bool): whether newlines should be stripped (default: True)
 
     Returns:
         list[SubtitleEvent]: merge subtitle stream
@@ -146,9 +150,6 @@ def merge_subtitle_events(
     Throws:
         SubtitleValidationException in case the merged subtitles are invalid.
     """
-    time_shift = 0
-    all_events = []
-
     if len(subtitle_groups) != len(segment_durations):
         raise Exception("Different number of subtitles and segments")
 
@@ -158,6 +159,8 @@ def merge_subtitle_events(
     if len(segment_durations) == 0:
         raise Exception("No segments to compare")
 
+    time_shift = 0
+    all_events = []
     total_duration = reduce(lambda x, y: x + y, segment_durations)
     for index, events in enumerate(subtitle_groups):
         duration = segment_durations[index]
@@ -165,6 +168,12 @@ def merge_subtitle_events(
         for event in events:
             event.start += time_shift
             event.end += time_shift
+            if clean_newlines:
+                # Removing newlines from the subtitles.
+                # We will add them later when they are adjusted.
+                # Catering both for actual newlines and SRT-style newliens
+                event.text = event.text.replace("\\N", " ")
+                event.text = event.text.replace("\\n", " ")
             all_events.append(event)
         # Accumulating time played for current segment for next start time
         time_shift += int(duration)
@@ -172,3 +181,29 @@ def merge_subtitle_events(
     validate_subtitles(all_events, total_duration)
 
     return all_events
+
+
+def equalize_subtitles(
+    subtitles: SSAFile, line_length: int = 42, method: str = "halving"
+) -> SSAFile:
+    """
+    Uses the srt_equalizer library to transform the generated subtitles
+    to a more pleasant format to watch on screen.
+
+    Args:
+        subtitles (SSAFile): subtitles file to be adjusted
+        line_length (int): how many characters a single line should have (default: 42)
+        method (str): which method to use to split subtitles between "greedy", "halving", and "punctuation". (default: halving)
+    """
+    with (
+        tempfile.NamedTemporaryFile(suffix=".srt", delete=True) as tmp_src,
+        tempfile.NamedTemporaryFile(suffix=".srt", delete=True) as tmp_dst,
+    ):
+        subtitles.save(tmp_src.name)
+        srt_equalizer.equalize_srt_file(
+            tmp_src.name,
+            tmp_dst.name,
+            target_chars=line_length,
+            method=method,
+        )
+        return SSAFile.load(tmp_dst.name)

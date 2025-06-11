@@ -794,17 +794,17 @@ class TestMetrics(unittest.TestCase):
         mock_client.models.generate_content.return_value = mock_response
 
         # The complete subtitle generation process will try for 10 times before giving up.
-        expected_invalid_subtitles = 10
+        expected_invalid_subtitles = 20
         with patch("time.sleep", lambda _: None):
             with self.assertRaises(Exception) as context:
                 self.subtitler.transcribe_audio(self.mock_audio_segment)
                 self.fail("Should never get here")
 
         metrics = self.subtitler.metrics
-        # 10 times with 1000 tokens
-        self.assertEqual(metrics.input_token_count, 10000)
-        # 10 times with 2000 tokens + 2000 thinking tokens
-        self.assertEqual(metrics.output_token_count, 40000)
+        # 20 times with 1000 tokens
+        self.assertEqual(metrics.input_token_count, 20000)
+        # 20 times with 2000 tokens + 2000 thinking tokens
+        self.assertEqual(metrics.output_token_count, 80000)
         self.assertEqual(metrics.client_errors, 0)
         self.assertEqual(metrics.server_errors, 0)
         self.assertEqual(metrics.invalid_subtitles, expected_invalid_subtitles)

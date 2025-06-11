@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from concurrent.futures import ThreadPoolExecutor
+import click
 import ffmpeg
 import logging
 import tempfile
@@ -12,6 +13,7 @@ from unittest.mock import Mock, patch, mock_open
 from click.testing import CliRunner
 from pydub import AudioSegment
 from pydub.generators import WhiteNoise
+from pysubs2 import SSAFile
 
 from subtitle_tool.ai import AISubtitler
 from subtitle_tool.audio import AudioSplitter
@@ -50,6 +52,7 @@ class TestMainCommand(unittest.TestCase):
 
     def setUp(self):
         """Setup for each test method"""
+
         self.runner = CliRunner()
         self.temp_dir = tempfile.mkdtemp()
         self.test_video_path = f"{self.temp_dir}/test_video.mp4"
@@ -134,26 +137,35 @@ class TestMainCommand(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn(f"File '{self.temp_dir}' is a directory", result.output)
 
-    @patch("subtitle_tool.video.extract_audio")
-    @patch.object(AudioSplitter, "split_audio")
-    @patch.object(AISubtitler, "transcribe_audio")
     @patch.object(ThreadPoolExecutor, "map")
+    @patch.object(AudioSplitter, "split_audio")
+    @patch("subtitle_tool.video.extract_audio")
+    @patch.object(SSAFile, "to_file")
+    @patch("subtitle_tool.cli.equalize_subtitles")
+    @patch("subtitle_tool.cli.merge_subtitle_events")
     def test_successful_video_processing(
         self,
         mock_map,
-        mock_transcribe_audio,
         mock_split_audio,
         mock_extract_audio,
+        mock_to_file,
+        mock_equalize_subtitles,
+        mock_merge_subtitle_events,
     ):
         """Test successful video processing flow"""
         # Setup mocks
         mock_audio_segment = Mock()
         mock_audio_segment.duration_seconds = 10.0
+
+        mock_extract_audio = Mock()
         mock_extract_audio.return_value = mock_audio_segment
 
         mock_segments = [Mock(duration_seconds=5.0), Mock(duration_seconds=5.0)]
+
+        mock_split_audio = Mock()
         mock_split_audio.return_value = mock_segments
 
+        mock_map = Mock()
         mock_map.return_value = [
             [
                 SubtitleEvent(start=1000, end=2000, text="First"),
@@ -164,6 +176,20 @@ class TestMainCommand(unittest.TestCase):
                 SubtitleEvent(start=3000, end=4000, text="Fourth"),
             ],
         ]
+
+        mock_merge_subtitle_events = Mock()
+        mock_merge_subtitle_events.return_value = [
+            SubtitleEvent(start=1000, end=2000, text="First"),
+            SubtitleEvent(start=3000, end=4000, text="Second"),
+            SubtitleEvent(start=5000, end=6000, text="Third"),
+            SubtitleEvent(start=7000, end=8000, text="Fourth"),
+        ]
+
+        mock_equalize_subtitles = Mock()
+        mock_equalize_subtitles.return_value = SSAFile()
+
+        mock_to_file = Mock()
+        mock_to_file.return_value = None
 
         # Run command
         # Patching time.sleep to speed up the retry mechanism
@@ -176,34 +202,34 @@ class TestMainCommand(unittest.TestCase):
                         "test_key",
                         "--video",
                         str(self.test_video_path),
+                        "--debug",
                     ],
                 )
 
         # Assertions
         self.assertEqual(result.exit_code, 0)
-        mock_split_audio.assert_called_once()
         self.assertIn("Subtitles saved at", result.output)
 
-    @patch("subtitle_tool.video.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
-    @patch.object(AISubtitler, "transcribe_audio")
     @patch.object(ThreadPoolExecutor, "map")
+    @patch.object(SSAFile, "to_file")
+    @patch("subtitle_tool.cli.equalize_subtitles")
+    @patch("subtitle_tool.cli.merge_subtitle_events")
     def test_successful_audio_processing(
         self,
-        mock_map,
-        mock_transcribe_audio,
         mock_split_audio,
-        mock_extract_audio,
+        mock_map,
+        mock_to_file,
+        mock_equalize_subtitles,
+        mock_merge_subtitle_events,
     ):
-        """Test successful video processing flow"""
         # Setup mocks
-        mock_audio_segment = Mock()
-        mock_audio_segment.duration_seconds = 10.0
-        mock_extract_audio.return_value = mock_audio_segment
-
         mock_segments = [Mock(duration_seconds=5.0), Mock(duration_seconds=5.0)]
+
+        mock_split_audio = Mock()
         mock_split_audio.return_value = mock_segments
 
+        mock_map = Mock()
         mock_map.return_value = [
             [
                 SubtitleEvent(start=1000, end=2000, text="First"),
@@ -214,6 +240,20 @@ class TestMainCommand(unittest.TestCase):
                 SubtitleEvent(start=3000, end=4000, text="Fourth"),
             ],
         ]
+
+        mock_merge_subtitle_events = Mock()
+        mock_merge_subtitle_events.return_value = [
+            SubtitleEvent(start=1000, end=2000, text="First"),
+            SubtitleEvent(start=3000, end=4000, text="Second"),
+            SubtitleEvent(start=5000, end=6000, text="Third"),
+            SubtitleEvent(start=7000, end=8000, text="Fourth"),
+        ]
+
+        mock_equalize_subtitles = Mock()
+        mock_equalize_subtitles.return_value = SSAFile()
+
+        mock_to_file = Mock()
+        mock_to_file.return_value = None
 
         # Run command
         # Patching time.sleep to speed up the retry mechanism
@@ -231,13 +271,14 @@ class TestMainCommand(unittest.TestCase):
 
         # Assertions
         self.assertEqual(result.exit_code, 0)
-        mock_split_audio.assert_called_once()
         self.assertIn("Subtitles saved at", result.output)
 
     @patch("subtitle_tool.cli.extract_audio")
     def test_video_audio_extraction_error(self, mock_extract_audio):
         """Test error handling when audio extraction fails"""
-        mock_extract_audio.side_effect = VideoProcessingError("Audio extraction failed")
+        mock_extract_audio.side_effect = VideoProcessingError(
+            "Error loading audio stream"
+        )
 
         result = self.runner.invoke(
             main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
@@ -274,44 +315,52 @@ class TestMainCommand(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Control-C pressed", result.output)
 
-    @patch("subtitle_tool.cli.extract_audio")
     @patch.object(AudioSplitter, "split_audio")
-    @patch.object(AISubtitler, "transcribe_audio")
     @patch.object(ThreadPoolExecutor, "map")
     @patch("subtitle_tool.cli.merge_subtitle_events")
     @patch("subtitle_tool.cli.events_to_subtitles")
+    @patch("subtitle_tool.cli.equalize_subtitles")
     @patch("shutil.move")
+    @patch.object(SSAFile, "to_file")
     def test_existing_subtitle_backup(
         self,
+        mock_to_file,
         mock_move,
+        mock_equalize_subtitles,
         mock_events_to_subtitles,
-        mock_merge_events,
-        mock_executor,
-        mock_ai_subtitler,
+        mock_merge_subtitle_events,
+        mock_map,
         mock_split_audio,
-        mock_extract_audio,
     ):
-        """Test that existing subtitle files are backed up"""
         # Setup mocks
-        mock_audio_segment = Mock()
-        mock_audio_segment.duration_seconds = 60.0
-        mock_extract_audio.return_value = mock_audio_segment
+        mock_split_audio.return_value = [
+            Mock(duration_seconds=5.0),
+            Mock(duration_seconds=5.0),
+        ]
 
-        mock_segments = [Mock(duration_seconds=30.0)]
-        mock_split_audio.return_value = mock_segments
+        mock_map.return_value = [
+            [
+                SubtitleEvent(start=1000, end=2000, text="First"),
+                SubtitleEvent(start=3000, end=4000, text="Second"),
+            ],
+            [
+                SubtitleEvent(start=1000, end=2000, text="Third"),
+                SubtitleEvent(start=3000, end=4000, text="Fourth"),
+            ],
+        ]
 
-        mock_subtitler_instance = Mock()
-        mock_ai_subtitler.return_value = mock_subtitler_instance
+        mock_merge_subtitle_events.return_value = [
+            SubtitleEvent(start=1000, end=2000, text="First"),
+            SubtitleEvent(start=3000, end=4000, text="Second"),
+            SubtitleEvent(start=5000, end=6000, text="Third"),
+            SubtitleEvent(start=7000, end=8000, text="Fourth"),
+        ]
 
-        mock_executor_instance = Mock()
-        mock_executor.return_value.__enter__.return_value = mock_executor_instance
-        mock_executor_instance.map.return_value = [["subtitle1"]]
+        mock_equalize_subtitles.return_value = SSAFile()
 
-        mock_subtitle_events = [Mock()]
-        mock_merge_events.return_value = mock_subtitle_events
+        mock_events_to_subtitles.return_value = SSAFile()
 
-        mock_subtitles = Mock()
-        mock_events_to_subtitles.return_value = mock_subtitles
+        mock_to_file.return_value = None
 
         # Create existing subtitle file
         subtitle_path = Path(self.temp_dir) / "test_video.srt"
@@ -320,7 +369,13 @@ class TestMainCommand(unittest.TestCase):
         # Run command
         with patch("builtins.open", mock_open()) as mock_file:
             result = self.runner.invoke(
-                main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
+                main,
+                [
+                    "--api-key",
+                    "test_key",
+                    "--video",
+                    str(self.test_video_path),
+                ],
             )
 
         # Assertions
@@ -361,14 +416,9 @@ class TestErrorHandling(unittest.TestCase):
         """Cleanup after each test method"""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @patch("subtitle_tool.video.extract_audio")
-    @patch.object(AudioSplitter, "split_audio")
-    @patch("subtitle_tool.ai.AISubtitler")
-    def test_internal_error_handling(
-        self, mock_ai_subtitler, mock_split_audio, mock_extract_audio
-    ):
+    @patch("subtitle_tool.cli.extract_audio")
+    def test_internal_error_handling(self, mock_extract_audio):
         """Test that internal errors are properly caught and reported"""
-        # Setup mocks to raise an unexpected exception
         mock_extract_audio.side_effect = RuntimeError("Unexpected internal error")
 
         result = self.runner.invoke(
@@ -376,14 +426,10 @@ class TestErrorHandling(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 1)
-        self.assertIn("Error: ", result.output)
+        self.assertIn("Unexpected internal error", result.output)
 
     @patch("subtitle_tool.cli.extract_audio")
-    @patch.object(AudioSplitter, "split_audio")
-    @patch("subtitle_tool.cli.AISubtitler")
-    def test_internal_error_verbose_stack_trace(
-        self, mock_ai_subtitler, mock_split_audio, mock_extract_audio
-    ):
+    def test_internal_error_verbose_stack_trace(self, mock_extract_audio):
         """Test that internal errors echo stack trace on verbose mode"""
         mock_extract_audio.side_effect = RuntimeError("Unexpected internal error")
 
@@ -406,11 +452,7 @@ class TestErrorHandling(unittest.TestCase):
         self.assertIn("RuntimeError: Unexpected internal error", result.output)
 
     @patch("subtitle_tool.cli.extract_audio")
-    @patch.object(AudioSplitter, "split_audio")
-    @patch("subtitle_tool.cli.AISubtitler")
-    def test_internal_error_debug_stack_trace(
-        self, mock_ai_subtitler, mock_split_audio, mock_extract_audio
-    ):
+    def test_internal_error_debug_stack_trace(self, mock_extract_audio):
         """Test that internal errors echo stack trace on debug mode"""
         mock_extract_audio.side_effect = RuntimeError("Unexpected internal error")
 

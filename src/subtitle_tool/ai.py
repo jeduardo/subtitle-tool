@@ -15,7 +15,6 @@ from subtitle_tool.subtitles import (
 from tenacity import (
     before_sleep_log,
     retry,
-    retry_if_exception_type,
     stop_after_attempt,
     retry_if_exception,
     RetryCallState,
@@ -137,7 +136,7 @@ class AISubtitler(object):
             {
                 "start": 8500,
                 "end": 12000,
-                "text": "For years, he tracks her killer\\Nwithout success."
+                "text": "For years, he tracks her killer without success."
             },
             {
                 "start": 12000,
@@ -147,7 +146,7 @@ class AISubtitler(object):
             {
                 "start": 14900,
                 "end": 18842,
-                "text": "Somewhere deep in the Houston crime files\\Nare the secrets to solve"
+                "text": "Somewhere deep in the Houston crime files are the secrets to solve"
             },
             {
                 "start": 18842,
@@ -162,12 +161,12 @@ class AISubtitler(object):
             {
                 "start": 22000,
                 "end": 26800,
-                "text": "Houston had 500,000 prints. Everybody has 10 fingers.\\NThat's 5 million prints."
+                "text": "Houston had 500,000 prints. Everybody has 10 fingers. That's 5 million prints."
             },
             {
                 "start": 27300,
                 "end": 30800,
-                "text": "34 years later, investigators\\Nfind the answer."
+                "text": "34 years later, investigators find the answer."
             },
             {
                 "start": 31500,
@@ -404,7 +403,7 @@ class AISubtitler(object):
 
         This function will call Gemini to generate subtitles and will
         validate the result before returning. If the subtitle is invalid,
-        it will ask Gemini to recreate the subtitles up to 10 times.
+        it will ask Gemini to recreate the subtitles up to 20 times.
 
         It will only retry the generation on subtitle validation errors.
 
@@ -422,7 +421,7 @@ class AISubtitler(object):
 
         @retry(
             retry=retry_if_exception(self._subtitles_retry_handler),
-            stop=stop_after_attempt(10),
+            stop=stop_after_attempt(20),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
         )
         def _inner_audio_to_subtitles() -> list[SubtitleEvent]:
