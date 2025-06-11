@@ -1,7 +1,7 @@
 import json
-import pytest
-import tempfile
 import os
+import tempfile
+import unittest
 
 from pydantic import ValidationError
 from pysubs2 import SSAFile, SSAEvent
@@ -19,31 +19,31 @@ from subtitle_tool.subtitles import (
 )
 
 
-class TestSubtitleEvent:
+class TestSubtitleEvent(unittest.TestCase):
     """Test the SubtitleEvent model"""
 
     def test_subtitle_event_creation(self):
         """Test creating a SubtitleEvent with valid data"""
         event = SubtitleEvent(start=1000, end=2000, text="Hello world")
-        assert event.start == 1000
-        assert event.end == 2000
-        assert event.text == "Hello world"
+        self.assertEqual(event.start, 1000)
+        self.assertEqual(event.end, 2000)
+        self.assertEqual(event.text, "Hello world")
 
     def test_subtitle_event_validation(self):
         """Test SubtitleEvent field validation"""
         # Test with missing fields - should raise ValidationError
-        with pytest.raises(ValidationError):
+        with self.assertRaises(ValidationError):
             SubtitleEvent(start=1000)  # type: ignore # missing end and text
 
 
-class TestSubtitlesToEvents:
+class TestSubtitlesToEvents(unittest.TestCase):
     """Test subtitles_to_events function"""
 
     def test_empty_subtitle_file(self):
         """Test with empty subtitle file"""
         subtitle = SSAFile()
         result = subtitles_to_events(subtitle)
-        assert result == []
+        self.assertEqual(result, [])
 
     def test_single_subtitle_event(self):
         """Test with single subtitle event"""
@@ -52,11 +52,11 @@ class TestSubtitlesToEvents:
 
         result = subtitles_to_events(subtitle)
 
-        assert len(result) == 1
-        assert result[0].start == 1000
-        assert result[0].end == 2000
-        assert result[0].text == "Hello"
-        assert isinstance(result[0], SubtitleEvent)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].start, 1000)
+        self.assertEqual(result[0].end, 2000)
+        self.assertEqual(result[0].text, "Hello")
+        self.assertIsInstance(result[0], SubtitleEvent)
 
     def test_multiple_subtitle_events(self):
         """Test with multiple subtitle events"""
@@ -69,20 +69,20 @@ class TestSubtitlesToEvents:
 
         result = subtitles_to_events(subtitle)
 
-        assert len(result) == 3
-        assert result[0].text == "First"
-        assert result[1].text == "Second"
-        assert result[2].text == "Third"
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0].text, "First")
+        self.assertEqual(result[1].text, "Second")
+        self.assertEqual(result[2].text, "Third")
 
 
-class TestSubtitlesToDict:
+class TestSubtitlesToDict(unittest.TestCase):
     """Test subtitles_to_dict function"""
 
     def test_empty_subtitle_file(self):
         """Test with empty subtitle file"""
         subtitle = SSAFile()
         result = subtitles_to_dict(subtitle)
-        assert result == []
+        self.assertEqual(result, [])
 
     def test_single_subtitle_event(self):
         """Test with single subtitle event"""
@@ -91,9 +91,9 @@ class TestSubtitlesToDict:
 
         result = subtitles_to_dict(subtitle)
 
-        assert len(result) == 1
-        assert result[0] == {"start": 1000, "end": 2000, "text": "Hello"}
-        assert isinstance(result[0], dict)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], {"start": 1000, "end": 2000, "text": "Hello"})
+        self.assertIsInstance(result[0], dict)
 
     def test_multiple_subtitle_events(self):
         """Test with multiple subtitle events"""
@@ -105,19 +105,19 @@ class TestSubtitlesToDict:
 
         result = subtitles_to_dict(subtitle)
 
-        assert len(result) == 2
-        assert result[0] == {"start": 1000, "end": 2000, "text": "First"}
-        assert result[1] == {"start": 3000, "end": 4000, "text": "Second"}
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0], {"start": 1000, "end": 2000, "text": "First"})
+        self.assertEqual(result[1], {"start": 3000, "end": 4000, "text": "Second"})
 
 
-class TestEventsToSubtitles:
+class TestEventsToSubtitles(unittest.TestCase):
     """Test events_to_subtitles function"""
 
     def test_empty_events_list(self):
         """Test with empty events list"""
         result = events_to_subtitles([])
-        assert isinstance(result, SSAFile)
-        assert len(result.events) == 0
+        self.assertIsInstance(result, SSAFile)
+        self.assertEqual(len(result.events), 0)
 
     def test_single_event(self):
         """Test with single subtitle event"""
@@ -125,12 +125,12 @@ class TestEventsToSubtitles:
 
         result = events_to_subtitles(events)
 
-        assert isinstance(result, SSAFile)
-        assert len(result.events) == 1
-        assert result.events[0].start == 1000
-        assert result.events[0].end == 2000
-        assert result.events[0].text == "Hello"
-        assert isinstance(result.events[0], SSAEvent)
+        self.assertIsInstance(result, SSAFile)
+        self.assertEqual(len(result.events), 1)
+        self.assertEqual(result.events[0].start, 1000)
+        self.assertEqual(result.events[0].end, 2000)
+        self.assertEqual(result.events[0].text, "Hello")
+        self.assertIsInstance(result.events[0], SSAEvent)
 
     def test_multiple_events(self):
         """Test with multiple subtitle events"""
@@ -141,12 +141,12 @@ class TestEventsToSubtitles:
 
         result = events_to_subtitles(events)
 
-        assert len(result.events) == 2
-        assert result.events[0].text == "First"
-        assert result.events[1].text == "Second"
+        self.assertEqual(len(result.events), 2)
+        self.assertEqual(result.events[0].text, "First")
+        self.assertEqual(result.events[1].text, "Second")
 
 
-class TestValidateSubtitles:
+class TestValidateSubtitles(unittest.TestCase):
     """Test validate_subtitles function"""
 
     def test_valid_subtitles(self):
@@ -169,22 +169,22 @@ class TestValidateSubtitles:
         ]
         duration = 10.0  # 10 seconds
 
-        with pytest.raises(SubtitleValidationException) as exc_info:
+        with self.assertRaises(SubtitleValidationException) as exc_info:
             validate_subtitles(subtitles, duration)
 
-        assert "Subtitle ends at 12000" in str(exc_info.value)
-        assert "while audio segment ends at 10000.0" in str(exc_info.value)
+        self.assertIn("Subtitle ends at 12000", str(exc_info.exception))
+        self.assertIn("while audio segment ends at 10000.0", str(exc_info.exception))
 
     def test_subtitle_start_after_end(self):
         """Test when subtitle start time is after end time"""
         subtitles = [SubtitleEvent(start=2000, end=1000, text="Invalid")]  # start > end
         duration = 10.0
 
-        with pytest.raises(SubtitleValidationException) as exc_info:
+        with self.assertRaises(SubtitleValidationException) as exc_info:
             validate_subtitles(subtitles, duration)
 
-        assert "starts at 2000" in str(exc_info.value)
-        assert "but ends at 1000" in str(exc_info.value)
+        self.assertIn("starts at 2000", str(exc_info.exception))
+        self.assertIn("but ends at 1000", str(exc_info.exception))
 
     def test_overlapping_subtitles(self):
         """Test when subtitles overlap"""
@@ -194,11 +194,11 @@ class TestValidateSubtitles:
         ]
         duration = 10.0
 
-        with pytest.raises(SubtitleValidationException) as exc_info:
+        with self.assertRaises(SubtitleValidationException) as exc_info:
             validate_subtitles(subtitles, duration)
 
-        assert "starts at 2000" in str(exc_info.value)
-        assert "previous subtitle finishes at 3000" in str(exc_info.value)
+        self.assertIn("starts at 2000", str(exc_info.exception))
+        self.assertIn("previous subtitle finishes at 3000", str(exc_info.exception))
 
     def test_adjacent_subtitles(self):
         """Test subtitles that are adjacent (end of one = start of next)"""
@@ -228,7 +228,7 @@ class TestValidateSubtitles:
         validate_subtitles(subtitles, duration)
 
 
-class TestSaveToJson:
+class TestSaveToJson(unittest.TestCase):
     """Test save_to_json function"""
 
     def test_save_empty_subtitles(self):
@@ -245,7 +245,7 @@ class TestSaveToJson:
             with open(temp_path, "r") as f:
                 content = json.load(f)
 
-            assert content == []
+            self.assertEqual(content, [])
         finally:
             os.unlink(temp_path)
 
@@ -263,8 +263,8 @@ class TestSaveToJson:
             with open(temp_path, "r") as f:
                 content = json.load(f)
 
-            assert len(content) == 1
-            assert content[0] == {"start": 1000, "end": 2000, "text": "Hello"}
+            self.assertEqual(len(content), 1)
+            self.assertEqual(content[0], {"start": 1000, "end": 2000, "text": "Hello"})
         finally:
             os.unlink(temp_path)
 
@@ -285,14 +285,14 @@ class TestSaveToJson:
             with open(temp_path, "r") as f:
                 content = json.load(f)
 
-            assert len(content) == 2
-            assert content[0] == {"start": 1000, "end": 2000, "text": "First"}
-            assert content[1] == {"start": 3000, "end": 4000, "text": "Second"}
+            self.assertEqual(len(content), 2)
+            self.assertEqual(content[0], {"start": 1000, "end": 2000, "text": "First"})
+            self.assertEqual(content[1], {"start": 3000, "end": 4000, "text": "Second"})
         finally:
             os.unlink(temp_path)
 
 
-class TestMergeSubtitleEvents:
+class TestMergeSubtitleEvents(unittest.TestCase):
     """Test merge_subtitle_events function"""
 
     def test_merge_empty_groups(self):
@@ -300,7 +300,7 @@ class TestMergeSubtitleEvents:
         subtitle_groups = []
         segment_durations = []
 
-        with pytest.raises(Exception):  # Pydantic ValidationError
+        with self.assertRaises(Exception):  # Pydantic ValidationError
             merge_subtitle_events(subtitle_groups, segment_durations)
 
     def test_merge_single_group(self):
@@ -315,11 +315,11 @@ class TestMergeSubtitleEvents:
 
         result = merge_subtitle_events(subtitle_groups, segment_durations)
 
-        assert len(result) == 2
-        assert result[0].start == 1000  # No time shift
-        assert result[0].end == 2000
-        assert result[1].start == 3000
-        assert result[1].end == 4000
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0].start, 1000)  # No time shift
+        self.assertEqual(result[0].end, 2000)
+        self.assertEqual(result[1].start, 3000)
+        self.assertEqual(result[1].end, 4000)
 
     def test_merge_two_groups(self):
         """Test merging two subtitle groups with time adjustment"""
@@ -340,19 +340,19 @@ class TestMergeSubtitleEvents:
 
         result = merge_subtitle_events(subtitle_groups, segment_durations)
 
-        assert len(result) == 4
+        self.assertEqual(len(result), 4)
 
         # First group should remain unchanged
-        assert result[0].start == 1000
-        assert result[0].end == 2000
-        assert result[1].start == 3000
-        assert result[1].end == 4000
+        self.assertEqual(result[0].start, 1000)
+        self.assertEqual(result[0].end, 2000)
+        self.assertEqual(result[1].start, 3000)
+        self.assertEqual(result[1].end, 4000)
 
         # Second group should be shifted by 5 seconds (5000ms)
-        assert result[2].start == 6000  # 1000 + 5000
-        assert result[2].end == 7000  # 2000 + 5000
-        assert result[3].start == 8000  # 3000 + 5000
-        assert result[3].end == 9000  # 4000 + 5000
+        self.assertEqual(result[2].start, 6000)  # 1000 + 5000
+        self.assertEqual(result[2].end, 7000)  # 2000 + 5000
+        self.assertEqual(result[3].start, 8000)  # 3000 + 5000
+        self.assertEqual(result[3].end, 9000)  # 4000 + 5000
 
     def test_merge_three_groups(self):
         """Test merging three subtitle groups"""
@@ -365,10 +365,10 @@ class TestMergeSubtitleEvents:
 
         result = merge_subtitle_events(subtitle_groups, segment_durations)
 
-        assert len(result) == 3
-        assert result[0].start == 1000  # No shift
-        assert result[1].start == 4000  # Shifted by 3000ms
-        assert result[2].start == 8000  # Shifted by 3000 + 4000 = 7000ms
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0].start, 1000)  # No shift
+        self.assertEqual(result[1].start, 4000)  # Shifted by 3000ms
+        self.assertEqual(result[2].start, 8000)  # Shifted by 3000 + 4000 = 7000ms
 
     def test_merge_with_validation_error(self):
         """Test that merge raises validation error for invalid result"""
@@ -378,7 +378,7 @@ class TestMergeSubtitleEvents:
         ]
         segment_durations = [10.0]  # Only 10 seconds total
 
-        with pytest.raises(SubtitleValidationException):
+        with self.assertRaises(SubtitleValidationException):
             merge_subtitle_events(subtitle_groups, segment_durations)
 
     def test_merge_preserves_text_content(self):
@@ -391,24 +391,64 @@ class TestMergeSubtitleEvents:
 
         result = merge_subtitle_events(subtitle_groups, segment_durations)
 
-        assert len(result) == 2
-        assert result[0].text == "Hello"
-        assert result[1].text == "World"
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0].text, "Hello")
+        self.assertEqual(result[1].text, "World")
+
+    def test_merge_clean_newlines_true(self):
+        """Test that newlines are cleaned when clean_newlines is True"""
+        subtitle_groups = [
+            [
+                SubtitleEvent(start=1000, end=2000, text="Line1\\NLine2"),
+                SubtitleEvent(start=3000, end=4000, text="Line3\\nLine4"),
+                SubtitleEvent(start=5000, end=6000, text="Line5\nLine6"),
+            ]
+        ]
+        segment_durations = [7.0 * 1000]
+
+        result = merge_subtitle_events(
+            subtitle_groups, segment_durations, clean_newlines=True
+        )
+
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0].text, "Line1 Line2")
+        self.assertEqual(result[1].text, "Line3 Line4")
+        self.assertEqual(result[2].text, "Line5 Line6")
+
+    def test_merge_clean_newlines_false(self):
+        """Test that newlines are preserved when clean_newlines is False"""
+        subtitle_groups = [
+            [
+                SubtitleEvent(start=1000, end=2000, text="Line1\\NLine2"),
+                SubtitleEvent(start=3000, end=4000, text="Line3\\nLine4"),
+                SubtitleEvent(start=5000, end=6000, text="Line5\nLine6"),
+            ]
+        ]
+        segment_durations = [7.0 * 1000]
+
+        result = merge_subtitle_events(
+            subtitle_groups, segment_durations, clean_newlines=False
+        )
+
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0].text, "Line1\\NLine2")
+        self.assertEqual(result[1].text, "Line3\\nLine4")
+        self.assertEqual(result[2].text, "Line5\nLine6")
 
 
-class TestSubtitleValidationException:
+class TestSubtitleValidationException(unittest.TestCase):
     """Test SubtitleValidationException"""
 
     def test_exception_creation(self):
         """Test creating SubtitleValidationException"""
         msg = "Test error message"
         exc = SubtitleValidationException(msg)
-        assert str(exc) == msg
-        assert isinstance(exc, Exception)
+        self.assertEqual(str(exc), msg)
+        self.assertIsInstance(exc, Exception)
 
 
 # Integration tests
-class TestIntegration:
+class TestIntegration(unittest.TestCase):
     """Integration tests combining multiple functions"""
 
     def test_round_trip_conversion(self):
@@ -425,11 +465,11 @@ class TestIntegration:
         converted_back = events_to_subtitles(events)
 
         # Verify conversion preserved data
-        assert len(converted_back.events) == len(original.events)
+        self.assertEqual(len(converted_back.events), len(original.events))
         for orig, conv in zip(original.events, converted_back.events):
-            assert orig.start == conv.start
-            assert orig.end == conv.end
-            assert orig.text == conv.text
+            self.assertEqual(orig.start, conv.start)
+            self.assertEqual(orig.end, conv.end)
+            self.assertEqual(orig.text, conv.text)
 
     def test_merge_and_validate_workflow(self):
         """Test complete workflow of merging and validating"""
@@ -445,9 +485,9 @@ class TestIntegration:
         validate_subtitles(merged, sum(segment_durations))
 
         # Should complete without errors
-        assert len(merged) == 2
-        assert merged[1].start == 4000  # Shifted by 3000ms
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(merged[1].start, 4000)  # Shifted by 3000ms
 
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    unittest.main()

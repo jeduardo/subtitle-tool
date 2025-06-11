@@ -174,6 +174,7 @@ def merge_subtitle_events(
                 # Catering both for actual newlines and SRT-style newliens
                 event.text = event.text.replace("\\N", " ")
                 event.text = event.text.replace("\\n", " ")
+                event.text = event.text.replace("\n", " ")
             all_events.append(event)
         # Accumulating time played for current segment for next start time
         time_shift += int(duration)
