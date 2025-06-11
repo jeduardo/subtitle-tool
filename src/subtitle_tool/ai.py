@@ -497,6 +497,7 @@ class AISubtitler(object):
                         ),  # 2 minutes
                         response_mime_type="application/json",
                         response_schema=list[SubtitleEvent],
+                        thinking_config=types.ThinkingConfig(thinking_budget=24576),
                     ),
                 )
             finally:
