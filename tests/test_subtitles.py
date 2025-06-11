@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from pydantic import ValidationError
 from pysubs2 import SSAFile, SSAEvent
@@ -16,6 +17,7 @@ from subtitle_tool.subtitles import (
     validate_subtitles,
     save_to_json,
     merge_subtitle_events,
+    equalize_subtitles,
 )
 
 
@@ -487,6 +489,210 @@ class TestIntegration(unittest.TestCase):
         # Should complete without errors
         self.assertEqual(len(merged), 2)
         self.assertEqual(merged[1].start, 4000)  # Shifted by 3000ms
+
+
+class TestEqualizeSubtitles(unittest.TestCase):
+    """Test equalize_subtitles function"""
+
+    @patch("srt_equalizer.srt_equalizer.equalize_srt_file")
+    @patch("pysubs2.SSAFile.load")
+    @patch("pysubs2.SSAFile.save")
+    def test_equalize_subtitles_default_params(
+        self, mock_save, mock_load, mock_equalize_srt_file
+    ):
+        """Test with default line_length and method (halving)"""
+        subtitle = SSAFile()
+        subtitle.events.append(
+            SSAEvent(
+                start=0,
+                end=5000,
+                text="This is a very long sentence that definitely needs to be split into multiple lines for better readability on screen.",
+            )
+        )
+
+        # Configure mock_load to return a modified SSAFile
+        mock_loaded_ssa = SSAFile()
+        mock_loaded_ssa.events.append(
+            SSAEvent(
+                start=0,
+                end=5000,
+                text="This is a very long sentence that definitely\\Nneeds to be split into multiple lines for better\\Nreadability on screen.",
+            )
+        )
+        mock_load.return_value = mock_loaded_ssa
+
+        result = equalize_subtitles(subtitle)
+
+        # Assertions
+        mock_save.assert_called_once()
+        mock_equalize_srt_file.assert_called_once_with(
+            mock_save.call_args[0][0],  # src_path
+            mock_load.call_args[0][0],  # dst_path
+            target_chars=42,
+            method="halving",
+        )
+        mock_load.assert_called_once()
+        self.assertIsInstance(result, SSAFile)
+        self.assertEqual(len(result.events), 1)
+        self.assertEqual(
+            result.events[0].text,
+            "This is a very long sentence that definitely\\Nneeds to be split into multiple lines for better\\Nreadability on screen.",
+        )
+
+    @patch("srt_equalizer.srt_equalizer.equalize_srt_file")
+    @patch("pysubs2.SSAFile.load")
+    @patch("pysubs2.SSAFile.save")
+    def test_equalize_subtitles_custom_line_length(
+        self, mock_save, mock_load, mock_equalize_srt_file
+    ):
+        """Test with a custom line_length"""
+        subtitle = SSAFile()
+        subtitle.events.append(
+            SSAEvent(
+                start=0,
+                end=5000,
+                text="This is a very long sentence that definitely needs to be split into multiple lines for better readability on screen.",
+            )
+        )
+
+        custom_line_length = 20
+        mock_loaded_ssa = SSAFile()
+        mock_loaded_ssa.events.append(
+            SSAEvent(
+                start=0,
+                end=5000,
+                text="This is a very long\\Nsentence that definitely\\Nneeds to be split into\\Nmultiple lines for\\Nbetter readability on\\Nscreen.",
+            )
+        )
+        mock_load.return_value = mock_loaded_ssa
+
+        result = equalize_subtitles(subtitle, line_length=custom_line_length)
+
+        mock_save.assert_called_once()
+        mock_equalize_srt_file.assert_called_once_with(
+            mock_save.call_args[0][0],
+            mock_load.call_args[0][0],
+            target_chars=custom_line_length,
+            method="halving",
+        )
+        mock_load.assert_called_once()
+        self.assertIsInstance(result, SSAFile)
+        self.assertEqual(len(result.events), 1)
+        self.assertEqual(
+            result.events[0].text,
+            "This is a very long\\Nsentence that definitely\\Nneeds to be split into\\Nmultiple lines for\\Nbetter readability on\\Nscreen.",
+        )
+
+    @patch("srt_equalizer.srt_equalizer.equalize_srt_file")
+    @patch("pysubs2.SSAFile.load")
+    @patch("pysubs2.SSAFile.save")
+    def test_equalize_subtitles_greedy_method(
+        self, mock_save, mock_load, mock_equalize_srt_file
+    ):
+        """Test with the "greedy" method"""
+        subtitle = SSAFile()
+        subtitle.events.append(
+            SSAEvent(
+                start=0,
+                end=5000,
+                text="This is a very long sentence that definitely needs to be split into multiple lines for better readability on screen.",
+            )
+        )
+
+        mock_loaded_ssa = SSAFile()
+        mock_loaded_ssa.events.append(
+            SSAEvent(
+                start=0,
+                end=5000,
+                text="This is a very long sentence that definitely\\Nneeds to be split into multiple lines for better\\Nreadability on screen.",
+            )
+        )
+        mock_load.return_value = mock_loaded_ssa
+
+        result = equalize_subtitles(subtitle, method="greedy")
+
+        mock_save.assert_called_once()
+        mock_equalize_srt_file.assert_called_once_with(
+            mock_save.call_args[0][0],
+            mock_load.call_args[0][0],
+            target_chars=42,
+            method="greedy",
+        )
+        mock_load.assert_called_once()
+        self.assertIsInstance(result, SSAFile)
+        self.assertEqual(len(result.events), 1)
+        self.assertEqual(
+            result.events[0].text,
+            "This is a very long sentence that definitely\\Nneeds to be split into multiple lines for better\\Nreadability on screen.",
+        )
+
+    @patch("srt_equalizer.srt_equalizer.equalize_srt_file")
+    @patch("pysubs2.SSAFile.load")
+    @patch("pysubs2.SSAFile.save")
+    def test_equalize_subtitles_punctuation_method(
+        self, mock_save, mock_load, mock_equalize_srt_file
+    ):
+        """Test with the "punctuation" method"""
+        subtitle = SSAFile()
+        subtitle.events.append(
+            SSAEvent(
+                start=0,
+                end=5000,
+                text="This is a sentence. This is another sentence! And a third one?",
+            )
+        )
+
+        mock_loaded_ssa = SSAFile()
+        mock_loaded_ssa.events.append(
+            SSAEvent(
+                start=0,
+                end=5000,
+                text="This is a sentence.\\NThis is another sentence!\\NAnd a third one?",
+            )
+        )
+        mock_load.return_value = mock_loaded_ssa
+
+        result = equalize_subtitles(subtitle, method="punctuation")
+
+        mock_save.assert_called_once()
+        mock_equalize_srt_file.assert_called_once_with(
+            mock_save.call_args[0][0],
+            mock_load.call_args[0][0],
+            target_chars=42,
+            method="punctuation",
+        )
+        mock_load.assert_called_once()
+        self.assertIsInstance(result, SSAFile)
+        self.assertEqual(len(result.events), 1)
+        self.assertEqual(
+            result.events[0].text,
+            "This is a sentence.\\NThis is another sentence!\\NAnd a third one?",
+        )
+
+    @patch("srt_equalizer.srt_equalizer.equalize_srt_file")
+    @patch("pysubs2.SSAFile.load")
+    @patch("pysubs2.SSAFile.save")
+    def test_equalize_subtitles_empty_input(
+        self, mock_save, mock_load, mock_equalize_srt_file
+    ):
+        """Test with an empty SSAFile input"""
+        subtitle = SSAFile()
+
+        mock_loaded_ssa = SSAFile()  # Empty SSAFile
+        mock_load.return_value = mock_loaded_ssa
+
+        result = equalize_subtitles(subtitle)
+
+        mock_save.assert_called_once()
+        mock_equalize_srt_file.assert_called_once_with(
+            mock_save.call_args[0][0],
+            mock_load.call_args[0][0],
+            target_chars=42,
+            method="halving",
+        )
+        mock_load.assert_called_once()
+        self.assertIsInstance(result, SSAFile)
+        self.assertEqual(len(result.events), 0)
 
 
 if __name__ == "__main__":
