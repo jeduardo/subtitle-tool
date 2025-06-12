@@ -12,6 +12,7 @@ from subtitle_tool.subtitles import (
     SubtitleValidationException,
     validate_subtitles,
 )
+from subtitle_tool.utils import sanitize_int
 from tenacity import (
     before_sleep_log,
     retry,
@@ -27,6 +28,10 @@ logger = logging.getLogger("subtitle_tool.ai")
 DEFAULT_WAIT_TIME = 15.0
 
 
+class AIGenerationError(BaseException):
+    pass
+
+
 @dataclass
 class OperationMetrics(object):
     """
@@ -39,7 +44,8 @@ class OperationMetrics(object):
         server_errors (int): how many errors the client has seen
         throttles (int): how many errors the client has seen
         retries (int): how many retries the client has seen
-        invalids (int): how many invalid subtitles were generated
+        invalid_subtitles (int): how many invalid subtitles were generated
+        generation_errors (int): how many malformed responses the AI returned
     """
 
     input_token_count: int = 0
@@ -49,6 +55,7 @@ class OperationMetrics(object):
     throttles: int = 0
     retries: int = 0
     invalid_subtitles: int = 0
+    generation_errors: int = 0
 
     def __post_init__(self):
         self.lock = Lock()
@@ -62,6 +69,7 @@ class OperationMetrics(object):
         throttles: int = 0,
         retries: int = 0,
         invalid_subtitles: int = 0,
+        generation_errors: int = 0,
     ) -> None:
         """
         Add usage counters from the current client.
@@ -76,6 +84,7 @@ class OperationMetrics(object):
             throttles (int): number of throttles to add to the current counter
             retries (int): number of retries to add to the current counter
             invalid_subtitles (int): number of invalid subtitles to add
+            generation_errors (int): number of generation errors to add
         """
         with self.lock:
             self.input_token_count += input_token_count
@@ -85,6 +94,7 @@ class OperationMetrics(object):
             self.throttles += throttles
             self.retries += retries
             self.invalid_subtitles += invalid_subtitles
+            self.generation_errors += generation_errors
 
 
 @dataclass
@@ -266,6 +276,7 @@ class AISubtitler(object):
         - It's a 500 INTERNAL error, which Gemini sometimes issues and they recommend to retry.
         - It's a 429 rate limit error for quotas that are replenished by the minute.
         - It's a Server error.
+        - It's an AI Generation Error issued when validating the Gemini responses.
         For all other issues, we will not ask tenacity to retry.
 
         Args:
@@ -290,6 +301,10 @@ class AISubtitler(object):
             else:
                 self.metrics.add_metrics(client_errors=1)
             should_ret = self._is_recoverable_exception(exception)
+        elif isinstance(exception, AIGenerationError):
+            logger.debug(f"AI Generation error caught: {exception}")
+            self.metrics.add_metrics(generation_errors=1)
+            should_ret = True
 
         if should_ret:
             self.metrics.add_metrics(retries=1)
@@ -325,13 +340,15 @@ class AISubtitler(object):
 
         return should_ret
 
-    def _upload_file(self, file_name: str):
+    def _upload_file(self, file_name: str) -> types.File:
         """
         Wrapper to retry file uploads to the Gemini file server.
         It will apply exponential backoff for retries and try it for 5 times.
 
         Args:
             file_name (str): Path to file to be uploaded
+
+        Returns:
         """
 
         @retry(
@@ -340,9 +357,9 @@ class AISubtitler(object):
             before_sleep=before_sleep_log(logger, logging.DEBUG),
             reraise=True,
         )
-        def _inner_upload_file():
+        def _inner_upload_file() -> types.File:
             client = genai.Client(api_key=self.api_key)
-            return client.files.upload(file=file_name)  # type: ignore
+            return client.files.upload(file=file_name)
 
         return _inner_upload_file()
 
@@ -396,7 +413,7 @@ class AISubtitler(object):
                 )
 
     def _audio_to_subtitles(
-        self, audio_segment: AudioSegment, file_ref
+        self, audio_segment: AudioSegment, file_ref: types.File
     ) -> list[SubtitleEvent]:
         """
         Generate subtitles for an audio segment.
@@ -514,12 +531,19 @@ class AISubtitler(object):
                         f"Output token count: {metadata.candidates_token_count}"
                     )
                     self.metrics.add_metrics(
-                        input_token_count=metadata.prompt_token_count,  # type: ignore
-                        output_token_count=metadata.candidates_token_count  # type: ignore
-                        + metadata.thoughts_token_count,  # type: ignore
+                        input_token_count=sanitize_int(metadata.prompt_token_count),
+                        output_token_count=sanitize_int(metadata.candidates_token_count)
+                        + sanitize_int(metadata.thoughts_token_count),
                     )
-
-            return response.parsed  # type: ignore
+            if response:
+                if isinstance(response.parsed, list):
+                    return response.parsed
+                else:
+                    logger.debug("Parsed response is not a list")
+                    raise AIGenerationError("Parsed response is not a list")
+            else:
+                logger.debug("Response is empty")
+                raise AIGenerationError("Response is empty")
 
         return _inner_generate_subtitles()
 
@@ -536,7 +560,7 @@ class AISubtitler(object):
         Return:
             list[SubtitleEvent: list of validated subtitles
         """
-        with self.upload_audio(audio_segment) as file_ref:  # type: ignore
+        with self.upload_audio(audio_segment) as file_ref:
             subtitle_events = self._audio_to_subtitles(audio_segment, file_ref)
 
         return subtitle_events
