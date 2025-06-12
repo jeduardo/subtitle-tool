@@ -572,8 +572,48 @@ class TestAISubtitler(unittest.TestCase):
                 mock_client.files.upload.assert_called_with(file="/tmp/test_audio.wav")
                 self.assertEqual(mock_client.files.upload.call_count, 5)
 
-                # Delete should not be called since upload failed before yield
-                mock_client.files.delete.assert_not_called()
+        # Delete should not be called since upload failed before yield
+        mock_client.files.delete.assert_not_called()
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_upload_audio_delete_failure_logged(
+        self, mock_client_class, mock_temp_file
+    ):
+        """Test that an exception during file deletion is logged and not re-raised"""
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        # Make client.files.delete raise an exception
+        mock_client.files.delete.side_effect = Exception("Deletion failed unexpectedly")
+
+        # Patch the logger to capture warnings
+        with patch("subtitle_tool.ai.logger.warning") as mock_logger_warning:
+            # The context manager should not raise an exception
+            with self.subtitler.upload_audio(self.mock_audio_segment):
+                pass  # Simulate normal operation within the context
+
+            # Verify that delete was called and the warning was logged
+            mock_client.files.delete.assert_called_once_with(
+                name="files/test_upload_id"
+            )
+            mock_logger_warning.assert_called_once()
+            # The warning message is a single f-string, so it's at index 0 of the args tuple
+            full_warning_message = mock_logger_warning.call_args[0][0]
+            self.assertIn(
+                "Error while removing uploaded file files/test_upload_id",
+                full_warning_message,
+            )
+            self.assertIn("Deletion failed unexpectedly", full_warning_message)
 
     @patch("tempfile.NamedTemporaryFile")
     @patch("google.genai.Client")

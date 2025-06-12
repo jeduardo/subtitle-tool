@@ -150,14 +150,16 @@ def merge_subtitle_events(
     Throws:
         SubtitleValidationException in case the merged subtitles are invalid.
     """
-    if len(subtitle_groups) != len(segment_durations):
-        raise Exception("Different number of subtitles and segments")
+    if len(segment_durations) == 0:
+        raise ValueError("segment_durations cannot be empty")
 
     if len(subtitle_groups) == 0:
-        raise Exception("No subtitle groups to merge")
+        raise ValueError("subtitle_groups cannot be empty")
 
-    if len(segment_durations) == 0:
-        raise Exception("No segments to compare")
+    if len(subtitle_groups) != len(segment_durations):
+        raise ValueError(
+            f"Number of subtitle groups ({len(subtitle_groups)}) must match number of segment durations ({len(segment_durations)})"
+        )
 
     time_shift = 0
     all_events = []

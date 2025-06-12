@@ -2,6 +2,7 @@ import unittest
 import ffmpeg
 import tempfile
 import pytest
+from unittest.mock import patch, MagicMock
 
 from pydub import AudioSegment
 from pydub.generators import WhiteNoise
@@ -165,6 +166,26 @@ class TestVideo(unittest.TestCase):
                 exc_info.value.args[0],
                 f"No audio streams found in file {tmp_video.name}",
             )
+
+    @patch("ffmpeg.probe")
+    @patch("ffmpeg.run_async")
+    def test_extract_audio_ffmpeg_failure(self, mock_run_async, mock_probe):
+        # Mock ffmpeg.probe to return a valid stream
+        mock_probe.return_value = {
+            "streams": [{"codec_type": "audio", "codec_name": "aac"}]
+        }
+
+        # Mock the process returned by ffmpeg.run_async
+        mock_process = MagicMock()
+        mock_process.returncode = 1  # Simulate a non-zero return code
+        mock_error_output = b"ffmpeg error"  # Simplified error message
+        mock_process.communicate.return_value = (b"", mock_error_output)
+        mock_run_async.return_value = mock_process
+
+        with pytest.raises(VideoProcessingError) as exc_info:
+            extract_audio("dummy_video.mp4")
+
+        self.assertTrue(exc_info.value.args[0].startswith("Extraction error:"))
 
 
 if __name__ == "__main__":

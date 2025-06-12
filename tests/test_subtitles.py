@@ -302,8 +302,58 @@ class TestMergeSubtitleEvents(unittest.TestCase):
         subtitle_groups = []
         segment_durations = []
 
-        with self.assertRaises(Exception):  # Pydantic ValidationError
+        with self.assertRaises(ValueError) as cm:
             merge_subtitle_events(subtitle_groups, segment_durations)
+        self.assertIn("segment_durations cannot be empty", str(cm.exception))
+
+    def test_merge_more_subtitle_groups_than_durations(self):
+        """Test merging when there are more subtitle_groups than segment_durations"""
+        subtitle_groups = [
+            [SubtitleEvent(start=1000, end=2000, text="Group 1")],
+            [SubtitleEvent(start=1000, end=2000, text="Group 2")],
+        ]
+        segment_durations = [3.0 * 1000]  # One duration less than groups
+
+        with self.assertRaises(ValueError) as cm:
+            merge_subtitle_events(subtitle_groups, segment_durations)
+        self.assertIn(
+            "Number of subtitle groups (2) must match number of segment durations (1)",
+            str(cm.exception),
+        )
+
+    def test_merge_subtitle_groups_but_no_durations(self):
+        subtitle_groups = [
+            [SubtitleEvent(start=1000, end=2000, text="Group 1")],
+            [SubtitleEvent(start=1000, end=2000, text="Group 2")],
+        ]
+        segment_durations = []
+
+        with self.assertRaises(ValueError) as cm:
+            merge_subtitle_events(subtitle_groups, segment_durations)
+        self.assertIn(
+            "segment_durations cannot be empty",
+            str(cm.exception),
+        )
+
+    def test_merge_durations_but_no_subtitle_groups(self):
+        subtitle_groups = []
+        segment_durations = [3 * 0.5]
+
+        with self.assertRaises(ValueError) as cm:
+            merge_subtitle_events(subtitle_groups, segment_durations)
+        self.assertIn(
+            "subtitle_groups cannot be empty",
+            str(cm.exception),
+        )
+
+    def test_merge_zero_length_segment_durations(self):
+        """Test merging when segment_durations is of zero length"""
+        subtitle_groups = [[SubtitleEvent(start=1000, end=2000, text="Group 1")]]
+        segment_durations = []
+
+        with self.assertRaises(ValueError) as cm:
+            merge_subtitle_events(subtitle_groups, segment_durations)
+        self.assertIn("segment_durations cannot be empty", str(cm.exception))
 
     def test_merge_single_group(self):
         """Test merging single group (no time adjustment needed)"""
