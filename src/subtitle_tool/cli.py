@@ -224,7 +224,7 @@ def main(
             f"AI tokens used: {metrics.input_token_count} input / {metrics.output_token_count} output"
         )
         click.echo(
-            f"AI errors: {metrics.client_errors} client / {metrics.server_errors} server"
+            f"AI errors: {metrics.client_errors} client / {metrics.server_errors} server / {metrics.generation_errors} generation"
         )
         click.echo(
             f"AI calls: {metrics.throttles} throttled / {metrics.retries} retried"

@@ -12,6 +12,7 @@ from subtitle_tool.subtitles import SubtitleEvent
 from subtitle_tool.ai import (
     AISubtitler,
     DEFAULT_WAIT_TIME,
+    AIGenerationError,
 )
 
 
@@ -610,6 +611,85 @@ class TestAISubtitler(unittest.TestCase):
         result = self.subtitler.transcribe_audio(self.mock_audio_segment)
         self.assertEqual(len(result), 2)
 
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_upload_audio_wrong_type(self, mock_client_class, mock_temp_file):
+        """Test handling of wrong type for audio segment in upload_audio"""
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        # Pass a non-AudioSegment object
+        wrong_type_audio = "not an audio segment"
+
+        with self.assertRaises(
+            AttributeError
+        ):  # pydub.AudioSegment.export will raise AttributeError
+            with self.subtitler.upload_audio(wrong_type_audio):  # type: ignore
+                pass
+
+        mock_temp_file.assert_called_once()
+        mock_client_class.assert_not_called()  # Client should not be called if export fails
+
+    @patch("google.genai.Client")
+    def test_generate_subtitles_parsed_not_list(self, mock_client_class):
+        """Test _generate_subtitles when response.parsed is not a list"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_response = Mock()
+        mock_response.usage_metadata = Mock()
+        mock_response.usage_metadata.prompt_token_count = 10
+        mock_response.usage_metadata.candidates_token_count = 20
+        mock_response.usage_metadata.thoughts_token_count = 5
+        mock_response.parsed = "not a list"  # Simulate wrong type
+
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_file_ref = Mock()
+        mock_file_ref.name = "files/test_upload_id"
+
+        expected_retries = 10
+        with patch("time.sleep", lambda _: None):
+            with self.assertRaisesRegex(
+                AIGenerationError, "Parsed response is not a list"
+            ):
+                self.subtitler._generate_subtitles(mock_file_ref)
+
+        self.assertEqual(
+            self.subtitler.metrics.input_token_count, 10 * expected_retries
+        )
+        self.assertEqual(
+            self.subtitler.metrics.output_token_count, 25 * expected_retries
+        )
+        self.assertEqual(self.subtitler.metrics.retries, expected_retries)
+
+    @patch("google.genai.Client")
+    def test_generate_subtitles_empty_response(self, mock_client_class):
+        """Test _generate_subtitles when response is None"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_client.models.generate_content.return_value = (
+            None  # Simulate empty response
+        )
+
+        mock_file_ref = Mock()
+        mock_file_ref.name = "files/test_upload_id"
+
+        expected_retries = 10
+        with patch("time.sleep", lambda _: None):
+            with self.assertRaisesRegex(AIGenerationError, "Response is empty"):
+                self.subtitler._generate_subtitles(mock_file_ref)
+
+        self.assertEqual(self.subtitler.metrics.input_token_count, 0)
+        self.assertEqual(self.subtitler.metrics.output_token_count, 0)
+        self.assertEqual(self.subtitler.metrics.retries, expected_retries)
+
 
 class TestMetrics(unittest.TestCase):
     def setUp(self):
@@ -809,6 +889,41 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(metrics.server_errors, 0)
         self.assertEqual(metrics.invalid_subtitles, expected_invalid_subtitles)
         self.assertEqual(metrics.throttles, 0)
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("google.genai.Client")
+    def test_generation_errors(self, mock_client_class, mock_temp_file):
+        # Setup mocks needed for the method to operate
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        mock_client.models.generate_content.side_effect = AIGenerationError(
+            "Test generation error"
+        )
+
+        # Error control for Gemini will retry 10 times
+        expected_generation_errors = 10
+        with patch("time.sleep", lambda _: None):
+            with self.assertRaises(AIGenerationError) as context:
+                self.subtitler.transcribe_audio(self.mock_audio_segment)
+
+        metrics = self.subtitler.metrics
+        self.assertEqual(metrics.input_token_count, 0)
+        self.assertEqual(metrics.output_token_count, 0)
+        self.assertEqual(metrics.client_errors, 0)
+        self.assertEqual(metrics.server_errors, 0)
+        self.assertEqual(metrics.invalid_subtitles, 0)
+        self.assertEqual(metrics.throttles, 0)
+        self.assertEqual(metrics.generation_errors, expected_generation_errors)
 
 
 if __name__ == "__main__":
