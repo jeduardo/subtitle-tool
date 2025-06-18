@@ -616,9 +616,9 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a very long\\Nsentence that definitely\\Nneeds"+
+                text="This is a very long\\Nsentence that definitely\\Nneeds "+
                  "to be split into\\Nmultiple lines for\\Nbetter "
-                  + " readability on\\Nscreen.",
+                  + "readability on\\Nscreen.",
             )
         )
         mock_load.return_value = mock_loaded_ssa
