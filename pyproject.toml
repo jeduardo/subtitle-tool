@@ -1,6 +1,6 @@
 [project]
 name = "subtitle-tool"
-version = "0.1.16"
+version = "0.1.17"
 description = "Tool for generating subtitles with help from Google Gemini AI."
 authors = [{ name = "J. Eduardo", email = "j.eduardo@gmail.com" }]
 readme = "README.md"
