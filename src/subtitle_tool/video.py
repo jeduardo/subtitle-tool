@@ -1,9 +1,8 @@
-import ffmpeg
 import io
 import logging
 
+import ffmpeg
 from pydub import AudioSegment
-
 
 logger = logging.getLogger("subtitle_tool.video")
 

@@ -1,27 +1,28 @@
 import logging
 import tempfile
-
 from contextlib import contextmanager
 from dataclasses import dataclass
+from threading import Lock
+
 from google import genai
 from google.genai import types
 from google.genai.errors import ClientError, ServerError
 from pydub import AudioSegment
+from tenacity import (
+    RetryCallState,
+    before_sleep_log,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 from subtitle_tool.subtitles import (
     SubtitleEvent,
     SubtitleValidationException,
     validate_subtitles,
 )
 from subtitle_tool.utils import sanitize_int
-from tenacity import (
-    before_sleep_log,
-    retry,
-    stop_after_attempt,
-    retry_if_exception,
-    RetryCallState,
-    wait_exponential,
-)
-from threading import Lock
 
 logger = logging.getLogger("subtitle_tool.ai")
 
@@ -33,13 +34,14 @@ class AIGenerationError(BaseException):
 
 
 @dataclass
-class OperationMetrics(object):
+class OperationMetrics:
     """
     Usage tracker for interesting metrics.
 
     Args:
         input_token_count (int): number of input tokens, derived from the model prompt.
-        output_token_count (int): number of output tokens, comprising both output tokens and thought tokens.
+        output_token_count (int): number of output tokens, comprising both output tokens
+            and thought tokens.
         client_errors (int): how many errors the client has seen
         server_errors (int): how many errors the client has seen
         throttles (int): how many errors the client has seen
@@ -77,10 +79,14 @@ class OperationMetrics(object):
         performed under a lock.
 
         Args:
-            input_token_count (int): number of input tokens to add to the current counter
-            output_token_count (int): number of output tokens to add to the current counter
-            client_errors (int): number of client errors to add to the current counter
-            server_errors (int): number of server errors to add to the current counter
+            input_token_count (int): number of input tokens to add to the
+                current counter
+            output_token_count (int): number of output tokens to add to the
+                current counter
+            client_errors (int): number of client errors to add to the
+                current counter
+            server_errors (int): number of server errors to add to the
+                current counter
             throttles (int): number of throttles to add to the current counter
             retries (int): number of retries to add to the current counter
             invalid_subtitles (int): number of invalid subtitles to add
@@ -98,15 +104,17 @@ class OperationMetrics(object):
 
 
 @dataclass
-class AISubtitler(object):
+class AISubtitler:
     """
     AI Subtitler implementation using Gemini.
 
     Args:
         model_name (str): Gemini model to be used (mandatory)
         api_key (str): Gemini API key (mandatory)
-        delete_temp_files (bool): whether any temporary files created should be deleted (default: True)
-        system_prompt (str): system prompt driving the model. There is a default prompt already provided, override only if necessary.
+        delete_temp_files (bool): whether any temporary files created
+            should be deleted (default: True)
+        system_prompt (str): system prompt driving the model. There is
+            a default prompt already provided, override only if necessary.
     """
 
     model_name: str
@@ -125,7 +133,7 @@ class AISubtitler(object):
         4. Keep original meaning but clean up filler words like "um", "uh", "like", "you know", etc.
         5. Clean up stutters like "I I I" or "uh uh uh".
         6. After you generate the subtitles, you will MAKE ABSOLUTELY SURE that the last subtitle does not end after the audio file.
-    
+
         Example JSON subtitle for an audio file of 34000 milliseconds. Notice how the end of the last subtitle ends before the end of the audio file:
         [
             {
@@ -185,7 +193,7 @@ class AISubtitler(object):
             }
         ]
 
-        """
+        """  # noqa: E501
 
     def __post_init__(self):
         self.metrics = OperationMetrics()
@@ -211,8 +219,8 @@ class AISubtitler(object):
                         == "type.googleapis.com/google.rpc.QuotaFailure"
                     ):
                         for violation in detail.get("violations"):
-                            # e.g. minute: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
-                            # e.g. day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+                            # min: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
+                            # day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
                             if "PerDay" in violation["quotaId"]:
                                 return False
 
@@ -260,7 +268,8 @@ class AISubtitler(object):
                 if exception.code == 429:
                     delay = self._extract_retry_delay(exception)
                     logger.debug(
-                        f"Rate limit hit, sleeping for {delay} seconds as suggested by API"
+                        f"Rate limit hit, sleeping for {delay} seconds as "
+                        + "suggested by API"
                     )
                     return delay
 
@@ -269,11 +278,13 @@ class AISubtitler(object):
 
     def _ai_retry_handler(self, exception: BaseException) -> bool:
         """
-        This handler defines the cases when tenacity should retry calling the Gemini API.
+        This handler defines the cases when tenacity should retry
+        calling the Gemini API.
 
         We will retry the API when:
         - It's an error issued by the Gemini Client
-        - It's a 500 INTERNAL error, which Gemini sometimes issues and they recommend to retry.
+        - It's a 500 INTERNAL error, which Gemini sometimes issues and they
+            recommend to retry.
         - It's a 429 rate limit error for quotas that are replenished by the minute.
         - It's a Server error.
         - It's an AI Generation Error issued when validating the Gemini responses.
@@ -393,9 +404,11 @@ class AISubtitler(object):
             suffix=".wav", delete=self.delete_temp_files
         ) as temp_file:
             # Export AudioSegment to temporary file
-            # I found out that wav files can avoid some unexplained 500 errors with Gemini.
+            # I found out that wav files can avoid some unexplained
+            # 500 errors with Gemini.
             logger.debug(
-                f"Temporary file created at {temp_file.name}. It will {"be" if self.delete_temp_files else "not be"} removed."
+                f"Temporary file created at {temp_file.name}. "
+                + f"It will {"be" if self.delete_temp_files else "not be"} removed."
             )
 
             segment.export(temp_file.name, format="wav")

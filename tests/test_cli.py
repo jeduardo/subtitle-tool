@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 
-from concurrent.futures import ThreadPoolExecutor
-import click
-import ffmpeg
 import logging
-import tempfile
-import shutil
-import unittest
 import os
+import shutil
+import tempfile
+import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, mock_open, patch
+
+import ffmpeg
 from click.testing import CliRunner
 from pydub import AudioSegment
 from pydub.generators import WhiteNoise
 from pysubs2 import SSAFile
 
-from subtitle_tool.ai import AISubtitler
 from subtitle_tool.audio import AudioSplitter
-from subtitle_tool.cli import main, setup_logging, API_KEY_NAME, AI_DEFAULT_MODEL
+from subtitle_tool.cli import API_KEY_NAME, main, setup_logging
 from subtitle_tool.subtitles import SubtitleEvent
 from subtitle_tool.video import VideoProcessingError
 
@@ -194,7 +193,7 @@ class TestMainCommand(unittest.TestCase):
         # Run command
         # Patching time.sleep to speed up the retry mechanism
         with patch("time.sleep", lambda _: None):
-            with patch("builtins.open", mock_open()) as mock_file:
+            with patch("builtins.open", mock_open()):
                 result = self.runner.invoke(
                     main,
                     [
@@ -258,7 +257,7 @@ class TestMainCommand(unittest.TestCase):
         # Run command
         # Patching time.sleep to speed up the retry mechanism
         with patch("time.sleep", lambda _: None):
-            with patch("builtins.open", mock_open()) as mock_file:
+            with patch("builtins.open", mock_open()):
                 result = self.runner.invoke(
                     main,
                     [
@@ -367,7 +366,7 @@ class TestMainCommand(unittest.TestCase):
         subtitle_path.touch()
 
         # Run command
-        with patch("builtins.open", mock_open()) as mock_file:
+        with patch("builtins.open", mock_open()):
             result = self.runner.invoke(
                 main,
                 [

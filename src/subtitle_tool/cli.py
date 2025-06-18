@@ -1,14 +1,16 @@
-import click
 import logging
 import shutil
-import time
 import sys
+import time
 import traceback
-
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from humanize.time import precisedelta
 from pathlib import Path
+
+import click
+from humanize.time import precisedelta
+from pydub import AudioSegment
+
 from subtitle_tool.ai import AISubtitler
 from subtitle_tool.audio import AudioSplitter
 from subtitle_tool.subtitles import (
@@ -16,8 +18,7 @@ from subtitle_tool.subtitles import (
     events_to_subtitles,
     merge_subtitle_events,
 )
-from subtitle_tool.video import extract_audio, VideoProcessingError
-from pydub import AudioSegment
+from subtitle_tool.video import VideoProcessingError, extract_audio
 
 API_KEY_NAME = "GEMINI_API_KEY"
 AI_DEFAULT_MODEL = "gemini-2.5-flash-preview-05-20"
@@ -26,7 +27,8 @@ AI_DEFAULT_MODEL = "gemini-2.5-flash-preview-05-20"
 def setup_logging(verbose=False, debug=False):
     # Create formatter
     formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s [%(threadName)s] %(filename)s:%(lineno)d:%(funcName)s(): %(message)s",
+        "%(asctime)s [%(levelname)s] %(name)s [%(threadName)s] "
+        + "%(filename)s:%(lineno)d:%(funcName)s(): %(message)s",
         datefmt="%H:%M:%S",
     )
 
@@ -66,7 +68,7 @@ def setup_logging(verbose=False, debug=False):
     "--ai-model",
     type=click.STRING,
     default=AI_DEFAULT_MODEL,
-    help=f"Gemini model to use",
+    help="Gemini model to use",
 )
 @click.option(
     "-vf",
@@ -147,11 +149,12 @@ def main(
 
     if not api_key:
         raise click.MissingParameter(
-            f"API key not informed with --api-key or not present in the environment variable {API_KEY_NAME}"
+            "API key not informed with --api-key or not present "
+            + "in the environment variable {API_KEY_NAME}"
         )
 
     if not audio and not video or audio and video:
-        raise click.MissingParameter(f"Either --video or --audio need to be specified")
+        raise click.MissingParameter("Either --video or --audio need to be specified")
 
     click.echo(f"Generating subtitles for {video if video else audio}")
 
@@ -170,7 +173,8 @@ def main(
 
         # 2. Split the audio stream into 30-second segments
         click.echo(
-            f"Segmenting audio stream in {audio_segment_length} {"second" if audio_segment_length <= 1 else "seconds"} chunks..."
+            f"Segmenting audio stream in {audio_segment_length} " +
+            f"{'second' if audio_segment_length <= 1 else 'seconds'} chunks..."
         )
         segments = AudioSplitter().split_audio(
             audio_stream, segment_length=audio_segment_length
@@ -187,10 +191,10 @@ def main(
         executor = ThreadPoolExecutor(max_workers=parallel_segments)
         try:
             subtitle_groups = list(executor.map(subtitler.transcribe_audio, segments))
-        except (KeyboardInterrupt, click.Abort):
+        except (KeyboardInterrupt, click.Abort) as e:
             click.echo("Control-C pressed, shutting down processing")
             executor.shutdown(wait=False, cancel_futures=True)
-            raise click.Abort()
+            raise click.Abort() from e
 
         # 4. Join all subtitles into a single one
         segment_durations = [segment.duration_seconds * 1000 for segment in segments]
@@ -221,10 +225,12 @@ def main(
 
         click.echo(f"Subtitle generation retries: {metrics.invalid_subtitles}")
         click.echo(
-            f"AI tokens used: {metrics.input_token_count} input / {metrics.output_token_count} output"
+            f"AI tokens used: {metrics.input_token_count} "
+            + f"input / {metrics.output_token_count} output"
         )
         click.echo(
-            f"AI errors: {metrics.client_errors} client / {metrics.server_errors} server / {metrics.generation_errors} generation"
+            f"AI errors: {metrics.client_errors} client / {metrics.server_errors} "
+            + f"server / {metrics.generation_errors} generation"
         )
         click.echo(
             f"AI calls: {metrics.throttles} throttled / {metrics.retries} retried"
@@ -232,7 +238,7 @@ def main(
         click.echo(f"Processing time: {precisedelta(duration)}")
         click.echo(f"Subtitles saved at {subtitle_path}")
 
-    except click.ClickException as e:
+    except click.ClickException:
         # Re-raise them for click to handle
         raise
     except Exception as e:

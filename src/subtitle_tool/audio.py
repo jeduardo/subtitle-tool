@@ -1,6 +1,6 @@
 import logging
-
 from dataclasses import dataclass
+
 from humanize.time import precisedelta
 from pydub import AudioSegment, silence
 
@@ -8,13 +8,16 @@ logger = logging.getLogger("subtitle_tool.audio")
 
 
 @dataclass
-class AudioSplitter(object):
+class AudioSplitter:
     """
     Utility class to split audio segments.
 
     Attributes:
-        min_silence_length (int): duration in milliseconds when a sound period with less volume than silence_threshold is considered a segment of silence. (default: 200 milliseconds)
-        silence_threshold (int): volume in dBFS (decibels relative to full scale) that is considered silence (default: -40 dBFS)
+        min_silence_length (int): duration in milliseconds when a sound period
+            with less volume than silence_threshold is considered a segment of
+            silence. (default: 200 milliseconds)
+        silence_threshold (int): volume in dBFS (decibels relative to full scale)
+            that is considered silence (default: -40 dBFS)
     """
 
     min_silence_length: int = 200
@@ -32,7 +35,8 @@ class AudioSplitter(object):
         Args:
             audio_clip (AudioSegment): Audio clip to be split
             segment_length (int): Audio segment length in seconds (default: 30)
-            keep_silence (bool): Whether silence should be kept in the seguments (default: True)
+            keep_silence (bool): Whether silence should be kept in the segments
+                (default: True)
 
         Returns:
             list[AudioSegment]: List of segments from the audio file.
@@ -61,9 +65,10 @@ class AudioSplitter(object):
                 logging.debug(
                     f"Adding chunk ({chunk_dur}) overflows the segment ({segment_dur})"
                 )
-                # Only add segments to the list of segments if they have something in them.
-                # This covers the case when the initial segment extracted is longer than
-                # the minimum duration period.
+                # Only add segments to the list of segments if they have
+                # something in them.
+                # This covers the case when the initial segment extracted
+                # is longer than the minimum duration period.
                 if cur_segment.duration_seconds > 0:
                     segments.append(cur_segment)
                 cur_segment = chunk

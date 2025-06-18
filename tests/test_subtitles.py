@@ -5,19 +5,19 @@ import unittest
 from unittest.mock import patch
 
 from pydantic import ValidationError
-from pysubs2 import SSAFile, SSAEvent
+from pysubs2 import SSAEvent, SSAFile
 
 # Assuming the module is imported as subtitle_tool
 from subtitle_tool.subtitles import (
     SubtitleEvent,
     SubtitleValidationException,
-    subtitles_to_events,
-    subtitles_to_dict,
-    events_to_subtitles,
-    validate_subtitles,
-    save_to_json,
-    merge_subtitle_events,
     equalize_subtitles,
+    events_to_subtitles,
+    merge_subtitle_events,
+    save_to_json,
+    subtitles_to_dict,
+    subtitles_to_events,
+    validate_subtitles,
 )
 
 
@@ -244,7 +244,7 @@ class TestSaveToJson(unittest.TestCase):
             save_to_json(subtitles, temp_path)
 
             # Read back and verify
-            with open(temp_path, "r") as f:
+            with open(temp_path) as f:
                 content = json.load(f)
 
             self.assertEqual(content, [])
@@ -262,7 +262,7 @@ class TestSaveToJson(unittest.TestCase):
             save_to_json(subtitles, temp_path)
 
             # Read back and verify
-            with open(temp_path, "r") as f:
+            with open(temp_path) as f:
                 content = json.load(f)
 
             self.assertEqual(len(content), 1)
@@ -284,7 +284,7 @@ class TestSaveToJson(unittest.TestCase):
             save_to_json(subtitles, temp_path)
 
             # Read back and verify
-            with open(temp_path, "r") as f:
+            with open(temp_path) as f:
                 content = json.load(f)
 
             self.assertEqual(len(content), 2)
@@ -518,7 +518,7 @@ class TestIntegration(unittest.TestCase):
 
         # Verify conversion preserved data
         self.assertEqual(len(converted_back.events), len(original.events))
-        for orig, conv in zip(original.events, converted_back.events):
+        for orig, conv in zip(original.events, converted_back.events, strict=False):
             self.assertEqual(orig.start, conv.start)
             self.assertEqual(orig.end, conv.end)
             self.assertEqual(orig.text, conv.text)
@@ -556,7 +556,8 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a very long sentence that definitely needs to be split into multiple lines for better readability on screen.",
+                text="This is a very long sentence that definitely needs "
+                + "to be split into multiple lines for better readability on screen.",
             )
         )
 
@@ -566,7 +567,8 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a very long sentence that definitely\\Nneeds to be split into multiple lines for better\\Nreadability on screen.",
+                text="This is a very long sentence that definitely\\Nneeds to "
+                + "be split into multiple lines for better\\Nreadability on screen.",
             )
         )
         mock_load.return_value = mock_loaded_ssa
@@ -586,7 +588,8 @@ class TestEqualizeSubtitles(unittest.TestCase):
         self.assertEqual(len(result.events), 1)
         self.assertEqual(
             result.events[0].text,
-            "This is a very long sentence that definitely\\Nneeds to be split into multiple lines for better\\Nreadability on screen.",
+            "This is a very long sentence that definitely\\Nneeds "
+            + "to be split into multiple lines for better\\Nreadability on screen.",
         )
 
     @patch("srt_equalizer.srt_equalizer.equalize_srt_file")
@@ -601,7 +604,9 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a very long sentence that definitely needs to be split into multiple lines for better readability on screen.",
+                text="This is a very long sentence that definitely " +
+                "needs to be split into multiple lines for better "
+                + "readability on screen.",
             )
         )
 
@@ -611,7 +616,9 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a very long\\Nsentence that definitely\\Nneeds to be split into\\Nmultiple lines for\\Nbetter readability on\\Nscreen.",
+                text="This is a very long\\Nsentence that definitely\\Nneeds"+
+                 "to be split into\\Nmultiple lines for\\Nbetter "
+                  + " readability on\\Nscreen.",
             )
         )
         mock_load.return_value = mock_loaded_ssa
@@ -630,7 +637,9 @@ class TestEqualizeSubtitles(unittest.TestCase):
         self.assertEqual(len(result.events), 1)
         self.assertEqual(
             result.events[0].text,
-            "This is a very long\\Nsentence that definitely\\Nneeds to be split into\\Nmultiple lines for\\Nbetter readability on\\Nscreen.",
+            "This is a very long\\Nsentence that definitely\\Nneeds "
+            + "to be split into\\Nmultiple lines for\\Nbetter "
+             + "readability on\\Nscreen.",
         )
 
     @patch("srt_equalizer.srt_equalizer.equalize_srt_file")
@@ -645,7 +654,8 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a very long sentence that definitely needs to be split into multiple lines for better readability on screen.",
+                text="This is a very long sentence that definitely needs"
+                 + "to be split into multiple lines for better readability on screen.",
             )
         )
 
@@ -654,7 +664,8 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a very long sentence that definitely\\Nneeds to be split into multiple lines for better\\Nreadability on screen.",
+                text="This is a very long sentence that definitely\\Nneeds "
+                + "to be split into multiple lines for better\\Nreadability on screen.",
             )
         )
         mock_load.return_value = mock_loaded_ssa
@@ -673,7 +684,8 @@ class TestEqualizeSubtitles(unittest.TestCase):
         self.assertEqual(len(result.events), 1)
         self.assertEqual(
             result.events[0].text,
-            "This is a very long sentence that definitely\\Nneeds to be split into multiple lines for better\\Nreadability on screen.",
+            "This is a very long sentence that definitely\\Nneeds "
+            + "to be split into multiple lines for better\\Nreadability on screen.",
         )
 
     @patch("srt_equalizer.srt_equalizer.equalize_srt_file")
@@ -697,7 +709,8 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a sentence.\\NThis is another sentence!\\NAnd a third one?",
+                text="This is a sentence.\\NThis is another "
+                + "sentence!\\NAnd a third one?",
             )
         )
         mock_load.return_value = mock_loaded_ssa

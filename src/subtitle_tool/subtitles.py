@@ -1,11 +1,11 @@
 import json
 import logging
 import tempfile
-
 from functools import reduce
+
 from humanize.time import precisedelta
-from pydantic import BaseModel, Field, ConfigDict
-from pysubs2 import SSAFile, SSAEvent
+from pydantic import BaseModel, ConfigDict, Field
+from pysubs2 import SSAEvent, SSAFile
 from srt_equalizer import srt_equalizer
 
 logger = logging.getLogger("subtitle_tool.subtitles")
@@ -96,14 +96,19 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
 
     if subtitles[-1].end > (duration * 1000):
         raise SubtitleValidationException(
-            f"Subtitle ends at {subtitles[-1].end} ({precisedelta(int(subtitles[-1].end / 1000))}) while audio segment ends at {duration * 1000} ({precisedelta(int(duration))})"
+            f"Subtitle ends at {subtitles[-1].end} "
+            + f"({precisedelta(int(subtitles[-1].end / 1000))}) "
+            + f" while audio segment ends at {duration * 1000} "
+            + f"({precisedelta(int(duration))})"
         )
 
     prev_end = 0
     for index, event in enumerate(subtitles):
         if event.start > event.end:
             raise SubtitleValidationException(
-                f"Subtitle {index} starts at {event.start} ({precisedelta(int(event.start / 1000))}) but ends at {event.end} ({precisedelta(int(event.end / 1000))})"
+                f"Subtitle {index} starts at {event.start} "
+                + f"({precisedelta(int(event.start / 1000))}) "
+                + f"but ends at {event.end} ({precisedelta(int(event.end / 1000))})"
             )
 
         if index == 0:
@@ -112,7 +117,10 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
 
         if event.start < prev_end:
             raise SubtitleValidationException(
-                f"Subtitle {index} starts at {event.start} (({precisedelta(int(event.start / 1000))})) but the previous subtitle finishes at {prev_end} (({precisedelta(int(prev_end / 1000))}))"
+                f"Subtitle {index} starts at {event.start} "
+                + f"(({precisedelta(int(event.start / 1000))})) "
+                + f"but the previous subtitle finishes at {prev_end} "
+                + f"(({precisedelta(int(prev_end / 1000))}))"
             )
 
         prev_end = event.end
@@ -158,7 +166,8 @@ def merge_subtitle_events(
 
     if len(subtitle_groups) != len(segment_durations):
         raise ValueError(
-            f"Number of subtitle groups ({len(subtitle_groups)}) must match number of segment durations ({len(segment_durations)})"
+            f"Number of subtitle groups ({len(subtitle_groups)}) must match "
+            + f"number of segment durations ({len(segment_durations)})"
         )
 
     time_shift = 0
@@ -196,7 +205,8 @@ def equalize_subtitles(
     Args:
         subtitles (SSAFile): subtitles file to be adjusted
         line_length (int): how many characters a single line should have (default: 42)
-        method (str): which method to use to split subtitles between "greedy", "halving", and "punctuation". (default: halving)
+        method (str): which method to use to split subtitles between "greedy",
+            "halving", and "punctuation". (default: halving)
     """
     with (
         tempfile.NamedTemporaryFile(suffix=".srt", delete=True) as tmp_src,

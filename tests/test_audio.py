@@ -2,6 +2,7 @@ import unittest
 
 from pydub import AudioSegment
 from pydub.generators import WhiteNoise
+
 from subtitle_tool.audio import AudioSplitter
 
 

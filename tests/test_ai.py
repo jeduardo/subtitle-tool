@@ -1,20 +1,18 @@
-import unittest
 import json
 import logging
-
+import unittest
 from unittest.mock import MagicMock, Mock, patch
-from google.genai.errors import ClientError, ServerError
-from tenacity import RetryCallState
-from pydub import AudioSegment
-from subtitle_tool.subtitles import SubtitleEvent
 
+from google.genai.errors import ClientError, ServerError
+from pydub import AudioSegment
+from tenacity import RetryCallState
 
 from subtitle_tool.ai import (
-    AISubtitler,
     DEFAULT_WAIT_TIME,
     AIGenerationError,
+    AISubtitler,
 )
-
+from subtitle_tool.subtitles import SubtitleEvent
 
 # Running tests in DEBUG will help to troubleshoot errors on changes
 logging.getLogger("subtitle_tool").setLevel(logging.DEBUG)
@@ -57,7 +55,7 @@ CLIENT_ERROR_429_RATE_LIMIT_MINUTE = """
         ]
     }
 }
-"""
+"""  # noqa: E501
 
 CLIENT_ERROR_429_RATE_LIMIT_DAY = """
 {
@@ -96,7 +94,7 @@ CLIENT_ERROR_429_RATE_LIMIT_DAY = """
         ]
     }
 }
-"""
+"""  # noqa: E501
 
 CLIENT_ERROR_403_AUTH = """
 {
@@ -122,7 +120,7 @@ SERVER_ERROR_500_INTERNAL = """
 
 SERVER_ERROR_503_UNAVAILABLE = """
 {
-    "message": "", 
+    "message": "",
     "status": "Service Unavailable"
 }
 """
@@ -545,27 +543,28 @@ class TestAISubtitler(unittest.TestCase):
             Exception("Server error 500"),
         ]
 
-        for error in upload_errors:
-            with self.subTest(error=error):
+        for er in upload_errors:
+            with self.subTest(error=er):
                 # Reset mocks for each test
                 mock_client.reset_mock()
                 mock_client_class.reset_mock()
                 self.mock_audio_segment.reset_mock()
 
                 # Make upload raise the specific error
-                mock_client.files.upload.side_effect = error
+                mock_client.files.upload.side_effect = er
 
                 # Patching time.sleep to speed up the retry mechanism
                 with patch("time.sleep", lambda _: None):
-                    # The exception should be raised when trying to enter the context manager
-                    with self.assertRaises(type(error)) as context:
+                    # The exception should be raised when trying
+                    # to enter the context manager
+                    with self.assertRaises(type(er)) as context:
                         with self.subtitler.upload_audio(self.mock_audio_segment):
                             # This block should never be reached
                             self.fail(
-                                f"Context manager should not have been entered for {error}"
+                                f"Context manager should not have been entered for {er}"
                             )
 
-                self.assertEqual(str(context.exception), str(error))
+                self.assertEqual(str(context.exception), str(er))
 
                 # Verify the sequence of calls before the failure
                 self.mock_audio_segment.export.assert_called_once()
@@ -607,7 +606,8 @@ class TestAISubtitler(unittest.TestCase):
                 name="files/test_upload_id"
             )
             mock_logger_warning.assert_called_once()
-            # The warning message is a single f-string, so it's at index 0 of the args tuple
+            # The warning message is a single f-string, so it's
+            # at index 0 of the args tuple
             full_warning_message = mock_logger_warning.call_args[0][0]
             self.assertIn(
                 "Error while removing uploaded file files/test_upload_id",
@@ -673,7 +673,8 @@ class TestAISubtitler(unittest.TestCase):
                 pass
 
         mock_temp_file.assert_called_once()
-        mock_client_class.assert_not_called()  # Client should not be called if export fails
+        # Client should not be called if export fails
+        mock_client_class.assert_not_called()
 
     @patch("google.genai.Client")
     def test_generate_subtitles_parsed_not_list(self, mock_client_class):
@@ -806,7 +807,7 @@ class TestMetrics(unittest.TestCase):
         # Error control for Gemini will retry 10 times
         expected_client_errors = 10
         with patch("time.sleep", lambda _: None):
-            with self.assertRaises(Exception) as context:
+            with self.assertRaises(Exception):  # noqa: B017
                 self.subtitler.transcribe_audio(self.mock_audio_segment)
                 self.fail("Should never get here")
 
@@ -841,7 +842,7 @@ class TestMetrics(unittest.TestCase):
         # Error control for Gemini will retry 10 times
         expected_server_errors = 10
         with patch("time.sleep", lambda _: None):
-            with self.assertRaises(Exception) as context:
+            with self.assertRaises(Exception):  # noqa: B017
                 self.subtitler.transcribe_audio(self.mock_audio_segment)
                 self.fail("Should never get here")
 
@@ -876,7 +877,7 @@ class TestMetrics(unittest.TestCase):
         # Error control for Gemini will retry 10 times
         expected_throttles = 10
         with patch("time.sleep", lambda _: None):
-            with self.assertRaises(Exception) as context:
+            with self.assertRaises(Exception):  # noqa: B017
                 self.subtitler.transcribe_audio(self.mock_audio_segment)
                 self.fail("Should never get here")
 
@@ -913,10 +914,11 @@ class TestMetrics(unittest.TestCase):
 
         mock_client.models.generate_content.return_value = mock_response
 
-        # The complete subtitle generation process will try for 10 times before giving up.
+        # The complete subtitle generation process will try for
+        # 20 times before giving up.
         expected_invalid_subtitles = 20
         with patch("time.sleep", lambda _: None):
-            with self.assertRaises(Exception) as context:
+            with self.assertRaises(Exception):  # noqa: B017
                 self.subtitler.transcribe_audio(self.mock_audio_segment)
                 self.fail("Should never get here")
 
@@ -953,7 +955,7 @@ class TestMetrics(unittest.TestCase):
         # Error control for Gemini will retry 10 times
         expected_generation_errors = 10
         with patch("time.sleep", lambda _: None):
-            with self.assertRaises(AIGenerationError) as context:
+            with self.assertRaises(AIGenerationError):
                 self.subtitler.transcribe_audio(self.mock_audio_segment)
 
         metrics = self.subtitler.metrics

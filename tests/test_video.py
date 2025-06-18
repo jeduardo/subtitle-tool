@@ -1,9 +1,9 @@
-import unittest
-import ffmpeg
 import tempfile
-import pytest
-from unittest.mock import patch, MagicMock
+import unittest
+from unittest.mock import MagicMock, patch
 
+import ffmpeg
+import pytest
 from pydub import AudioSegment
 from pydub.generators import WhiteNoise
 
