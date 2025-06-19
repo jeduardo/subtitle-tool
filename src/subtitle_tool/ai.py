@@ -5,8 +5,16 @@ from dataclasses import dataclass
 from threading import Lock
 
 from google import genai
-from google.genai import types
 from google.genai.errors import ClientError, ServerError
+from google.genai.types import (
+    File,
+    GenerateContentConfig,
+    HarmBlockThreshold,
+    HarmCategory,
+    HttpOptions,
+    SafetySetting,
+    ThinkingConfig,
+)
 from pydub import AudioSegment
 from tenacity import (
     RetryCallState,
@@ -49,7 +57,6 @@ class OperationMetrics:
         invalid_subtitles (int): how many invalid subtitles were generated
         generation_errors (int): how many malformed responses the AI returned
     """
-
     input_token_count: int = 0
     output_token_count: int = 0
     client_errors: int = 0
@@ -351,7 +358,7 @@ class AISubtitler:
 
         return should_ret
 
-    def _upload_file(self, file_name: str) -> types.File:
+    def _upload_file(self, file_name: str) -> File:
         """
         Wrapper to retry file uploads to the Gemini file server.
         It will apply exponential backoff for retries and try it for 5 times.
@@ -360,6 +367,7 @@ class AISubtitler:
             file_name (str): Path to file to be uploaded
 
         Returns:
+            File: file upload reference
         """
 
         @retry(
@@ -368,7 +376,7 @@ class AISubtitler:
             before_sleep=before_sleep_log(logger, logging.DEBUG),
             reraise=True,
         )
-        def _inner_upload_file() -> types.File:
+        def _inner_upload_file() -> File:
             client = genai.Client(api_key=self.api_key)
             return client.files.upload(file=file_name)
 
@@ -426,7 +434,7 @@ class AISubtitler:
                 )
 
     def _audio_to_subtitles(
-        self, audio_segment: AudioSegment, file_ref: types.File
+        self, audio_segment: AudioSegment, file_ref: File
     ) -> list[SubtitleEvent]:
         """
         Generate subtitles for an audio segment.
@@ -497,37 +505,40 @@ class AISubtitler:
             try:
                 logger.debug("Asking Gemini to generate subtitles...")
                 client = genai.Client(api_key=self.api_key)
+                safety_settings = [
+                    SafetySetting(
+                        category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                        threshold=HarmBlockThreshold.BLOCK_NONE,
+                    ),
+                    SafetySetting(
+                        category=HarmCategory.HARM_CATEGORY_HARASSMENT,
+                        threshold=HarmBlockThreshold.BLOCK_NONE,
+                    ),
+                    SafetySetting(
+                        category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                        threshold=HarmBlockThreshold.BLOCK_NONE,
+                    ),
+                    SafetySetting(
+                        category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                        threshold=HarmBlockThreshold.BLOCK_NONE,
+                    ),
+                ]
+
+
                 response = client.models.generate_content(
                     model=self.model_name,
                     contents=["Create subtitles for this audio file", file_ref],
-                    config=types.GenerateContentConfig(
+                    config=GenerateContentConfig(
                         # Don't want to censor any subtitles
-                        safety_settings=[
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                        ],
+                        safety_settings=safety_settings,
                         system_instruction=self.system_prompt,
                         temperature=0.1,
-                        http_options=types.HttpOptions(
+                        http_options=HttpOptions(
                             timeout=2 * 60 * 1000
                         ),  # 2 minutes
                         response_mime_type="application/json",
                         response_schema=list[SubtitleEvent],
-                        thinking_config=types.ThinkingConfig(thinking_budget=24576),
+                        thinking_config=ThinkingConfig(thinking_budget=24576),
                     ),
                 )
             finally:
