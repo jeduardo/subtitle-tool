@@ -552,7 +552,7 @@ class AISubtitler:
                 if isinstance(response.parsed, list):
                     return response.parsed
                 else:
-                    logger.debug("Parsed response is not a list: {response}")
+                    logger.debug(f"Parsed response is not a list: {response}")
                     raise AIGenerationError("Parsed response is not a list")
             else:
                 logger.debug("Response is empty")
