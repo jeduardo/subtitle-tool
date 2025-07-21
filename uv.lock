@@ -492,7 +492,7 @@ wheels = [
 
 [[package]]
 name = "subtitle-tool"
-version = "0.1.16"
+version = "0.1.21"
 source = { editable = "." }
 dependencies = [
     { name = "audioop-lts" },
@@ -506,7 +506,7 @@ dependencies = [
     { name = "tenacity" },
 ]
 
-[package.dev-dependencies]
+[package.optional-dependencies]
 dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -522,16 +522,13 @@ requires-dist = [
     { name = "humanize", specifier = ">=4.12.3" },
     { name = "pydub", specifier = ">=0.25.1" },
     { name = "pysubs2", specifier = ">=1.8.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.1.1" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.0" },
     { name = "srt-equalizer", specifier = ">=0.1.10" },
     { name = "tenacity", specifier = ">=9.1.2" },
 ]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.4.0" },
-    { name = "pytest-cov", specifier = ">=6.1.1" },
-    { name = "ruff", specifier = ">=0.12.0" },
-]
+provides-extras = ["dev"]
 
 [[package]]
 name = "tenacity"
