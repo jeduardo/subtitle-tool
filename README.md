@@ -25,7 +25,15 @@ Export the API key for Gemini to the environment variable `GEMINI_API_KEY`
 ## Installation
 
 ```shell
-# Leaving it possible to change the local code
+pip install subtitle-tool
+```
+
+## Developing
+
+For local development it is useful to install the binary from the development
+location into the user's `PATH`. For this, run the following commands:
+
+```shell
 uv tool install -e .
 uv tool update-shell
 ```
