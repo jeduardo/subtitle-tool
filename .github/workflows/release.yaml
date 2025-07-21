@@ -68,7 +68,7 @@ jobs:
       # 7. Create GitHub release
       - name: Create GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_RELEASE }}
         run: |
           gh release create "v${{ steps.do_bump.outputs.new }}" \
             --title "Release v${{ steps.do_bump.outputs.new }}" \
