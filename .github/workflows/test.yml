@@ -11,24 +11,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup UV with caching
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version-file: "pyproject.toml"
 
-      - name: Install dependencies and test with pytest
+      - name: Install system dependencies
         run: |
-          # Installing missing packages on image
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          # Pulling dev dependencies for test
-          uv sync --dev
-          # Running tests
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install project with dev dependencies
+        run: |
+          uv sync --extra dev
+
+      - name: Run linting with ruff
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run tests with pytest
+        run: |
           uv run pytest tests --cov=src --cov-branch --cov-report=xml
 
       - name: Upload coverage reports to Codecov
