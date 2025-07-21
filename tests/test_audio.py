@@ -7,7 +7,6 @@ from subtitle_tool.audio import AudioSplitter
 
 
 class TestAudioSplitter(unittest.TestCase):
-
     def test_split_audio_exact_segment(self):
         # durations in milliseconds
         noise_duration_ms = 3 * 1000  # 3 seconds of noise

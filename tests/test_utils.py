@@ -4,7 +4,6 @@ from subtitle_tool.utils import sanitize_int
 
 
 class TestSanitizeInt(unittest.TestCase):
-
     def test_with_none(self):
         result = sanitize_int(None)
         self.assertEqual(result, 0)

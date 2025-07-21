@@ -173,8 +173,8 @@ def main(
 
         # 2. Split the audio stream into 30-second segments
         click.echo(
-            f"Segmenting audio stream in {audio_segment_length} " +
-            f"{'second' if audio_segment_length <= 1 else 'seconds'} chunks..."
+            f"Segmenting audio stream in {audio_segment_length} "
+            + f"{'second' if audio_segment_length <= 1 else 'seconds'} chunks..."
         )
         segments = AudioSplitter().split_audio(
             audio_stream, segment_length=audio_segment_length

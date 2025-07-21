@@ -57,6 +57,7 @@ class OperationMetrics:
         invalid_subtitles (int): how many invalid subtitles were generated
         generation_errors (int): how many malformed responses the AI returned
     """
+
     input_token_count: int = 0
     output_token_count: int = 0
     client_errors: int = 0
@@ -416,7 +417,7 @@ class AISubtitler:
             # 500 errors with Gemini.
             logger.debug(
                 f"Temporary file created at {temp_file.name}. "
-                + f"It will {"be" if self.delete_temp_files else "not be"} removed."
+                + f"It will {'be' if self.delete_temp_files else 'not be'} removed."
             )
 
             segment.export(temp_file.name, format="wav")
@@ -524,7 +525,6 @@ class AISubtitler:
                     ),
                 ]
 
-
                 response = client.models.generate_content(
                     model=self.model_name,
                     contents=["Create subtitles for this audio file", file_ref],
@@ -533,9 +533,7 @@ class AISubtitler:
                         safety_settings=safety_settings,
                         system_instruction=self.system_prompt,
                         temperature=0.1,
-                        http_options=HttpOptions(
-                            timeout=2 * 60 * 1000
-                        ),  # 2 minutes
+                        http_options=HttpOptions(timeout=2 * 60 * 1000),  # 2 minutes
                         response_mime_type="application/json",
                         response_schema=list[SubtitleEvent],
                         thinking_config=ThinkingConfig(thinking_budget=24576),

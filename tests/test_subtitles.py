@@ -604,8 +604,8 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a very long sentence that definitely " +
-                "needs to be split into multiple lines for better "
+                text="This is a very long sentence that definitely "
+                + "needs to be split into multiple lines for better "
                 + "readability on screen.",
             )
         )
@@ -616,9 +616,9 @@ class TestEqualizeSubtitles(unittest.TestCase):
             SSAEvent(
                 start=0,
                 end=5000,
-                text="This is a very long\\Nsentence that definitely\\Nneeds "+
-                 "to be split into\\Nmultiple lines for\\Nbetter "
-                  + "readability on\\Nscreen.",
+                text="This is a very long\\Nsentence that definitely\\Nneeds "
+                + "to be split into\\Nmultiple lines for\\Nbetter "
+                + "readability on\\Nscreen.",
             )
         )
         mock_load.return_value = mock_loaded_ssa
@@ -639,7 +639,7 @@ class TestEqualizeSubtitles(unittest.TestCase):
             result.events[0].text,
             "This is a very long\\Nsentence that definitely\\Nneeds "
             + "to be split into\\Nmultiple lines for\\Nbetter "
-             + "readability on\\Nscreen.",
+            + "readability on\\Nscreen.",
         )
 
     @patch("srt_equalizer.srt_equalizer.equalize_srt_file")
@@ -655,7 +655,7 @@ class TestEqualizeSubtitles(unittest.TestCase):
                 start=0,
                 end=5000,
                 text="This is a very long sentence that definitely needs"
-                 + "to be split into multiple lines for better readability on screen.",
+                + "to be split into multiple lines for better readability on screen.",
             )
         )
 

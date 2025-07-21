@@ -127,7 +127,6 @@ SERVER_ERROR_503_UNAVAILABLE = """
 
 
 class TestIsRecoverable(unittest.TestCase):
-
     def setUp(self) -> None:
         self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
 
@@ -165,7 +164,6 @@ class TestIsRecoverable(unittest.TestCase):
 
 
 class TestExtractRetryDelay(unittest.TestCase):
-
     def setUp(self) -> None:
         self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
 
@@ -209,7 +207,6 @@ class TestExtractRetryDelay(unittest.TestCase):
 
 
 class TestWaitApiLimit(unittest.TestCase):
-
     def setUp(self) -> None:
         self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
 
@@ -301,7 +298,6 @@ class TestWaitApiLimit(unittest.TestCase):
 
 
 class TestRetryHandler(unittest.TestCase):
-
     def setUp(self) -> None:
         self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
 
@@ -340,7 +336,6 @@ class TestRetryHandler(unittest.TestCase):
 
 
 class TestAISubtitler(unittest.TestCase):
-
     def setUp(self):
         """Set up test fixtures"""
         self.mock_audio_segment = Mock(spec=AudioSegment)

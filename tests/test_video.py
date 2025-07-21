@@ -11,7 +11,6 @@ from subtitle_tool.video import VideoProcessingError, extract_audio
 
 
 class TestVideo(unittest.TestCase):
-
     def _create_test_audio(self):
         """Helper method to create test audio segment"""
         noise1 = WhiteNoise().to_audio_segment(duration=3_000)  # 3 s of noise
@@ -28,7 +27,6 @@ class TestVideo(unittest.TestCase):
             tempfile.NamedTemporaryFile(suffix=".wav") as tmp_audio,
             tempfile.NamedTemporaryFile(suffix=f".{container_format}") as tmp_video,
         ):
-
             # Export audio to temp file
             audio_segment.export(tmp_audio.name, format="wav")
 
@@ -90,7 +88,6 @@ class TestVideo(unittest.TestCase):
             tempfile.NamedTemporaryFile(suffix=".wav") as tmp_audio,
             tempfile.NamedTemporaryFile(suffix=".mkv") as tmp_video,
         ):
-
             # Export audio to temp file
             audio_segment.export(tmp_audio.name, format="wav")
 
