@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   bump-version:
@@ -63,3 +64,13 @@ jobs:
         run: |
           git tag "v${{ steps.do_bump.outputs.new }}"
           git push origin "v${{ steps.do_bump.outputs.new }}"
+
+      # 7. Create GitHub release
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ steps.do_bump.outputs.new }}" \
+            --title "Release v${{ steps.do_bump.outputs.new }}" \
+            --notes "Automated release v${{ steps.do_bump.outputs.new }}" \
+            --generate-notes
