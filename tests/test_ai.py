@@ -174,6 +174,16 @@ class TestExtractRetryDelay(unittest.TestCase):
         delay = self.subtitler._extract_retry_delay(error)
         self.assertEqual(delay, 33.0)
 
+    def test_client_rate_limit_per_minute_zero_delay(self):
+        error = ClientError(
+            code=429,
+            response_json=json.loads(
+                CLIENT_ERROR_429_RATE_LIMIT_MINUTE.replace("33s", "0s")
+            ),
+        )
+        delay = self.subtitler._extract_retry_delay(error)
+        self.assertEqual(delay, DEFAULT_WAIT_TIME)
+
     def test_client_rate_limit_per_day(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_DAY)
