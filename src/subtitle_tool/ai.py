@@ -250,7 +250,14 @@ class AISubtitler:
                 if detail.get("@type") == "type.googleapis.com/google.rpc.RetryInfo":
                     retry_delay = detail.get("retryDelay", "")
                     if retry_delay.endswith("s"):
-                        return float(retry_delay[:-1])
+                        delay = float(retry_delay[:-1])
+                        if delay == 0:
+                            logger.warning(
+                                f"Delay returned is zero, waiting the default {DEFAULT_WAIT_TIME} instead"  # noqa: E501
+                            )
+                            return DEFAULT_WAIT_TIME
+                        else:
+                            return delay
         except Exception as e:
             logger.warning(f"Could not parse retry delay from exception: {e}")
 
