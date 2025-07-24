@@ -379,17 +379,19 @@ class AISubtitler:
             File: file upload reference
         """
 
-        @retry(
+        ret = File()
+
+        for attempt in Retrying(
             wait=wait_exponential(multiplier=1, min=1, max=5),
             stop=stop_after_attempt(5),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
             reraise=True,
-        )
-        def _inner_upload_file() -> File:
-            client = genai.Client(api_key=self.api_key)
-            return client.files.upload(file=file_name)
+        ):
+            with attempt:
+                client = genai.Client(api_key=self.api_key)
+                ret = client.files.upload(file=file_name)
 
-        return _inner_upload_file()
+        return ret
 
     def _remove_file(self, ref_name: str):
         """
