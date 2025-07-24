@@ -18,8 +18,8 @@ from google.genai.types import (
 from pydub import AudioSegment
 from tenacity import (
     RetryCallState,
+    Retrying,
     before_sleep_log,
-    retry,
     retry_if_exception,
     stop_after_attempt,
     wait_exponential,
@@ -378,17 +378,19 @@ class AISubtitler:
             File: file upload reference
         """
 
-        @retry(
+        ret = File()
+
+        for attempt in Retrying(
             wait=wait_exponential(multiplier=1, min=1, max=5),
             stop=stop_after_attempt(5),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
             reraise=True,
-        )
-        def _inner_upload_file() -> File:
-            client = genai.Client(api_key=self.api_key)
-            return client.files.upload(file=file_name)
+        ):
+            with attempt:
+                client = genai.Client(api_key=self.api_key)
+                ret = client.files.upload(file=file_name)
 
-        return _inner_upload_file()
+        return ret
 
     def _remove_file(self, ref_name: str):
         """
@@ -465,18 +467,19 @@ class AISubtitler:
 
         """
 
-        @retry(
+        subtitle_events = []
+
+        for attempt in Retrying(
             retry=retry_if_exception(self._subtitles_retry_handler),
             stop=stop_after_attempt(20),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
-        )
-        def _inner_audio_to_subtitles() -> list[SubtitleEvent]:
-            subtitle_events = self._generate_subtitles(file_ref)
-            validate_subtitles(subtitle_events, audio_segment.duration_seconds)
-            logger.debug("Valid subtitles generated for segment")
-            return subtitle_events
+        ):
+            with attempt:
+                subtitle_events = self._generate_subtitles(file_ref)
+                validate_subtitles(subtitle_events, audio_segment.duration_seconds)
+                logger.debug("Valid subtitles generated for segment")
 
-        return _inner_audio_to_subtitles()
+        return subtitle_events
 
     def _generate_subtitles(self, file_ref) -> list[SubtitleEvent]:
         """
@@ -501,80 +504,88 @@ class AISubtitler:
             list[SubtitleEvent]: subtitles extracted from audio track
         """
 
-        @retry(
+        ret = []
+
+        for attempt in Retrying(
             retry=retry_if_exception(self._ai_retry_handler),
             wait=self._wait_api_limit,
             stop=stop_after_attempt(10),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
             reraise=True,
-        )
-        def _inner_generate_subtitles() -> list[SubtitleEvent]:
-            response = None
-            try:
-                logger.debug("Asking Gemini to generate subtitles...")
-                client = genai.Client(api_key=self.api_key)
-                safety_settings = [
-                    SafetySetting(
-                        category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                        threshold=HarmBlockThreshold.BLOCK_NONE,
-                    ),
-                    SafetySetting(
-                        category=HarmCategory.HARM_CATEGORY_HARASSMENT,
-                        threshold=HarmBlockThreshold.BLOCK_NONE,
-                    ),
-                    SafetySetting(
-                        category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                        threshold=HarmBlockThreshold.BLOCK_NONE,
-                    ),
-                    SafetySetting(
-                        category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                        threshold=HarmBlockThreshold.BLOCK_NONE,
-                    ),
-                ]
+        ):
+            with attempt:
+                response = None
+                try:
+                    logger.debug("Asking Gemini to generate subtitles...")
+                    client = genai.Client(api_key=self.api_key)
+                    safety_settings = [
+                        SafetySetting(
+                            category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                            threshold=HarmBlockThreshold.BLOCK_NONE,
+                        ),
+                        SafetySetting(
+                            category=HarmCategory.HARM_CATEGORY_HARASSMENT,
+                            threshold=HarmBlockThreshold.BLOCK_NONE,
+                        ),
+                        SafetySetting(
+                            category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                            threshold=HarmBlockThreshold.BLOCK_NONE,
+                        ),
+                        SafetySetting(
+                            category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                            threshold=HarmBlockThreshold.BLOCK_NONE,
+                        ),
+                    ]
 
-                response = client.models.generate_content(
-                    model=self.model_name,
-                    contents=["Create subtitles for this audio file", file_ref],
-                    config=GenerateContentConfig(
-                        # Don't want to censor any subtitles
-                        safety_settings=safety_settings,
-                        system_instruction=self.system_prompt,
-                        temperature=0.1,
-                        http_options=HttpOptions(timeout=2 * 60 * 1000),  # 2 minutes
-                        response_mime_type="application/json",
-                        response_schema=list[SubtitleEvent],
-                        thinking_config=ThinkingConfig(thinking_budget=24576),
-                    ),
-                )
-            finally:
-                if response and response.usage_metadata:
-                    metadata = response.usage_metadata
-                    logger.debug(f"Cached token info: {metadata.cache_tokens_details}")
-                    logger.debug(
-                        f"Cached token count: {metadata.cached_content_token_count}"
+                    response = client.models.generate_content(
+                        model=self.model_name,
+                        contents=["Create subtitles for this audio file", file_ref],
+                        config=GenerateContentConfig(
+                            # Don't want to censor any subtitles
+                            safety_settings=safety_settings,
+                            system_instruction=self.system_prompt,
+                            temperature=0.1,
+                            http_options=HttpOptions(
+                                timeout=2 * 60 * 1000
+                            ),  # 2 minutes
+                            response_mime_type="application/json",
+                            response_schema=list[SubtitleEvent],
+                            thinking_config=ThinkingConfig(thinking_budget=24576),
+                        ),
                     )
-                    logger.debug(
-                        f"Thoughts token count: {metadata.thoughts_token_count}"
-                    )
-                    logger.debug(
-                        f"Output token count: {metadata.candidates_token_count}"
-                    )
-                    self.metrics.add_metrics(
-                        input_token_count=sanitize_int(metadata.prompt_token_count),
-                        output_token_count=sanitize_int(metadata.candidates_token_count)
-                        + sanitize_int(metadata.thoughts_token_count),
-                    )
-            if response:
-                if isinstance(response.parsed, list):
-                    return response.parsed
+                finally:
+                    if response and response.usage_metadata:
+                        metadata = response.usage_metadata
+                        logger.debug(
+                            f"Cached token info: {metadata.cache_tokens_details}"
+                        )
+                        logger.debug(
+                            f"Cached token count: {metadata.cached_content_token_count}"
+                        )
+                        logger.debug(
+                            f"Thoughts token count: {metadata.thoughts_token_count}"
+                        )
+                        logger.debug(
+                            f"Output token count: {metadata.candidates_token_count}"
+                        )
+                        self.metrics.add_metrics(
+                            input_token_count=sanitize_int(metadata.prompt_token_count),
+                            output_token_count=sanitize_int(
+                                metadata.candidates_token_count
+                            )
+                            + sanitize_int(metadata.thoughts_token_count),
+                        )
+                if response:
+                    if isinstance(response.parsed, list):
+                        ret = response.parsed
+                    else:
+                        logger.debug(f"Parsed response is not a list: {response}")
+                        raise AIGenerationError("Parsed response is not a list")
                 else:
-                    logger.debug(f"Parsed response is not a list: {response}")
-                    raise AIGenerationError("Parsed response is not a list")
-            else:
-                logger.debug("Response is empty")
-                raise AIGenerationError("Response is empty")
+                    logger.debug("Response is empty")
+                    raise AIGenerationError("Response is empty")
 
-        return _inner_generate_subtitles()
+        return ret
 
     def transcribe_audio(self, audio_segment: AudioSegment) -> list[SubtitleEvent]:
         """
