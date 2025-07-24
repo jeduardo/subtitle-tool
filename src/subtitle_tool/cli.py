@@ -1,6 +1,7 @@
 import logging
 import shutil
 import sys
+import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -21,7 +22,7 @@ from subtitle_tool.subtitles import (
 from subtitle_tool.video import VideoProcessingError, extract_audio
 
 API_KEY_NAME = "GEMINI_API_KEY"
-AI_DEFAULT_MODEL = "gemini-2.5-flash-preview-05-20"
+AI_DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 def setup_logging(verbose=False, debug=False):
@@ -190,7 +191,17 @@ def main(
 
         executor = ThreadPoolExecutor(max_workers=parallel_segments)
         try:
-            subtitle_groups = list(executor.map(subtitler.transcribe_audio, segments))
+            subtitle_groups = list(
+                executor.map(
+                    lambda segment, idx: setattr(
+                        threading.current_thread(), "name", f"segment-{idx}"
+                    )
+                    or subtitler.transcribe_audio(segment),
+                    segments,
+                    range(len(segments)),
+                )
+            )
+
         except (KeyboardInterrupt, click.Abort) as e:
             click.echo("Control-C pressed, shutting down processing")
             executor.shutdown(wait=False, cancel_futures=True)
