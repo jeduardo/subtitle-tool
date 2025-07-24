@@ -18,6 +18,7 @@ from google.genai.types import (
 from pydub import AudioSegment
 from tenacity import (
     RetryCallState,
+    Retrying,
     before_sleep_log,
     retry,
     retry_if_exception,
@@ -465,18 +466,19 @@ class AISubtitler:
 
         """
 
-        @retry(
+        subtitle_events = []
+
+        for attempt in Retrying(
             retry=retry_if_exception(self._subtitles_retry_handler),
             stop=stop_after_attempt(20),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
-        )
-        def _inner_audio_to_subtitles() -> list[SubtitleEvent]:
-            subtitle_events = self._generate_subtitles(file_ref)
-            validate_subtitles(subtitle_events, audio_segment.duration_seconds)
-            logger.debug("Valid subtitles generated for segment")
-            return subtitle_events
+        ):
+            with attempt:
+                subtitle_events = self._generate_subtitles(file_ref)
+                validate_subtitles(subtitle_events, audio_segment.duration_seconds)
+                logger.debug("Valid subtitles generated for segment")
 
-        return _inner_audio_to_subtitles()
+        return subtitle_events
 
     def _generate_subtitles(self, file_ref) -> list[SubtitleEvent]:
         """
