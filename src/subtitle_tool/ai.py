@@ -481,7 +481,7 @@ class AISubtitler:
         ):
             with attempt:
                 subtitle_events = self._generate_subtitles(file_ref, temp_adj)
-                temp_adj += self.temperature_adj # To use in next call (if any)
+                temp_adj += self.temperature_adj  # To use in next call (if any)
                 validate_subtitles(subtitle_events, audio_segment.duration_seconds)
                 logger.debug("Valid subtitles generated for segment")
 

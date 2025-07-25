@@ -3,17 +3,17 @@ import logging
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
+import tenacity
 from google.genai.errors import ClientError, ServerError
 from pydub import AudioSegment
 from tenacity import RetryCallState
-import tenacity
 
 from subtitle_tool.ai import (
     DEFAULT_WAIT_TIME,
     AIGenerationError,
     AISubtitler,
 )
-from subtitle_tool.subtitles import SubtitleEvent, SubtitleValidationError
+from subtitle_tool.subtitles import SubtitleEvent
 
 # Running tests in DEBUG will help to troubleshoot errors on changes
 logging.getLogger("subtitle_tool").setLevel(logging.DEBUG)
@@ -691,8 +691,6 @@ class TestAISubtitler(unittest.TestCase):
         self.assertGreater(temp, self.subtitler.temperature)
         # Checking if it increased as we predicted
         self.assertEqual(temp, target_value)
-
-
 
     @patch("tempfile.NamedTemporaryFile")
     def test_upload_audio_wrong_type(self, mock_temp_file):
