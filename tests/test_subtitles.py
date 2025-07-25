@@ -10,7 +10,7 @@ from pysubs2 import SSAEvent, SSAFile
 # Assuming the module is imported as subtitle_tool
 from subtitle_tool.subtitles import (
     SubtitleEvent,
-    SubtitleValidationException,
+    SubtitleValidationError,
     equalize_subtitles,
     events_to_subtitles,
     merge_subtitle_events,
@@ -171,7 +171,7 @@ class TestValidateSubtitles(unittest.TestCase):
         ]
         duration = 10.0  # 10 seconds
 
-        with self.assertRaises(SubtitleValidationException) as exc_info:
+        with self.assertRaises(SubtitleValidationError) as exc_info:
             validate_subtitles(subtitles, duration)
 
         self.assertIn("Subtitle ends at 12000", str(exc_info.exception))
@@ -182,7 +182,7 @@ class TestValidateSubtitles(unittest.TestCase):
         subtitles = [SubtitleEvent(start=2000, end=1000, text="Invalid")]  # start > end
         duration = 10.0
 
-        with self.assertRaises(SubtitleValidationException) as exc_info:
+        with self.assertRaises(SubtitleValidationError) as exc_info:
             validate_subtitles(subtitles, duration)
 
         self.assertIn("starts at 2000", str(exc_info.exception))
@@ -196,7 +196,7 @@ class TestValidateSubtitles(unittest.TestCase):
         ]
         duration = 10.0
 
-        with self.assertRaises(SubtitleValidationException) as exc_info:
+        with self.assertRaises(SubtitleValidationError) as exc_info:
             validate_subtitles(subtitles, duration)
 
         self.assertIn("starts at 2000", str(exc_info.exception))
@@ -430,7 +430,7 @@ class TestMergeSubtitleEvents(unittest.TestCase):
         ]
         segment_durations = [10.0]  # Only 10 seconds total
 
-        with self.assertRaises(SubtitleValidationException):
+        with self.assertRaises(SubtitleValidationError):
             merge_subtitle_events(subtitle_groups, segment_durations)
 
     def test_merge_preserves_text_content(self):
@@ -494,7 +494,7 @@ class TestSubtitleValidationException(unittest.TestCase):
     def test_exception_creation(self):
         """Test creating SubtitleValidationException"""
         msg = "Test error message"
-        exc = SubtitleValidationException(msg)
+        exc = SubtitleValidationError(msg)
         self.assertEqual(str(exc), msg)
         self.assertIsInstance(exc, Exception)
 

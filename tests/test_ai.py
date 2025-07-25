@@ -3,6 +3,7 @@ import logging
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
+import tenacity
 from google.genai.errors import ClientError, ServerError
 from pydub import AudioSegment
 from tenacity import RetryCallState
@@ -640,6 +641,56 @@ class TestAISubtitler(unittest.TestCase):
 
         result = self.subtitler.transcribe_audio(self.mock_audio_segment)
         self.assertEqual(len(result), 2)
+
+    @patch("tempfile.NamedTemporaryFile")
+    def test_transcribe_audio_validation_error(self, mock_temp_file):
+        """Test successful audio transcription"""
+        # Setup mocks needed for the method to operate
+        mock_temp_file_instance = MagicMock()
+        mock_temp_file_instance.name = "/tmp/test_audio.wav"
+        mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
+        mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        self.subtitler.client = mock_client
+
+        mock_ref = Mock()
+        mock_ref.name = "files/test_upload_id"
+        mock_client.files.upload.return_value = mock_ref
+
+        mock_response_usage_metadata = Mock()
+        mock_response_usage_metadata.cache_tokens_details = "Internal object"
+        mock_response_usage_metadata.cached_content_token_count = 0
+        mock_response_usage_metadata.prompt_token_count = 0
+        mock_response_usage_metadata.thoughts_token_count = 0
+        mock_response_usage_metadata.candidates_token_count = 0
+
+        mock_response = Mock()
+        mock_response.usage_metadata = mock_response_usage_metadata
+        # Invalid subtitle
+        mock_response.parsed = [
+            SubtitleEvent(start=1000, end=500, text="First"),
+            SubtitleEvent(start=5000, end=4000, text="Second"),
+        ]
+
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch("time.sleep", lambda _: None):
+            with self.assertRaises(tenacity.RetryError):
+                self.subtitler.transcribe_audio(self.mock_audio_segment)
+
+        # The transcribe audio function retries up to 20 times until
+        # it gives up. The first time, however, is done without any
+        # increase because we didn't see a validation error yet.
+        target_value = self.subtitler.temperature + 19 * self.subtitler.temperature_adj
+
+        _, kwargs = mock_client.models.generate_content.call_args
+        config = kwargs["config"]
+        temp = config.temperature
+        # Checking if the final temperature had increased
+        self.assertGreater(temp, self.subtitler.temperature)
+        # Checking if it increased as we predicted
+        self.assertEqual(temp, target_value)
 
     @patch("tempfile.NamedTemporaryFile")
     def test_upload_audio_wrong_type(self, mock_temp_file):

@@ -27,7 +27,7 @@ from tenacity import (
 
 from subtitle_tool.subtitles import (
     SubtitleEvent,
-    SubtitleValidationException,
+    SubtitleValidationError,
     validate_subtitles,
 )
 from subtitle_tool.utils import sanitize_int
@@ -121,6 +121,9 @@ class AISubtitler:
         api_key (str): Gemini API key (mandatory)
         delete_temp_files (bool): whether any temporary files created
             should be deleted (default: True)
+        temperature (float): model temperature
+        temperature_adj (float): by how much the model temperature will be
+            adjusted for retries after incorrect content generation.
         system_prompt (str): system prompt driving the model. There is
             a default prompt already provided, override only if necessary.
     """
@@ -128,6 +131,8 @@ class AISubtitler:
     model_name: str
     api_key: str
     delete_temp_files: bool = True
+    temperature: float = 0.1
+    temperature_adj: float = 0.01
     system_prompt: str = """
         You are a professional transcriber of audio clips into subtitles.
         You recognize which language is being spoken in the title and write the subtitle accordingly.
@@ -357,7 +362,7 @@ class AISubtitler:
         # unneeded retries for problems we don't know about.
         should_ret = False
 
-        if isinstance(exception, SubtitleValidationException):
+        if isinstance(exception, SubtitleValidationError):
             logger.debug(f"Invalid subtitles generated: {exception}")
             self.metrics.add_metrics(invalid_subtitles=1)
             should_ret = True
@@ -468,19 +473,23 @@ class AISubtitler:
 
         subtitle_events = []
 
+        temp_adj = 0.0
         for attempt in Retrying(
             retry=retry_if_exception(self._subtitles_retry_handler),
             stop=stop_after_attempt(20),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
         ):
             with attempt:
-                subtitle_events = self._generate_subtitles(file_ref)
+                subtitle_events = self._generate_subtitles(file_ref, temp_adj)
+                temp_adj += self.temperature_adj  # To use in next call (if any)
                 validate_subtitles(subtitle_events, audio_segment.duration_seconds)
                 logger.debug("Valid subtitles generated for segment")
 
         return subtitle_events
 
-    def _generate_subtitles(self, file_ref) -> list[SubtitleEvent]:
+    def _generate_subtitles(
+        self, file_ref, temp_adj: float = 0.0
+    ) -> list[SubtitleEvent]:
         """
         Generate subtitles for the file uploaded onto Gemini servers.
 
@@ -498,6 +507,8 @@ class AISubtitler:
 
         Args:
             file_id (str): identifier of uploaded file
+            temp_adj (float): adjustment to configured temperature. Used to
+                increase the model temperature during new generations.
 
         Returns:
             list[SubtitleEvent]: subtitles extracted from audio track
@@ -514,8 +525,11 @@ class AISubtitler:
         ):
             with attempt:
                 response = None
+                temp = self.temperature + temp_adj
                 try:
-                    logger.debug("Asking Gemini to generate subtitles...")
+                    logger.debug(
+                        f"Asking Gemini to generate subtitles (temp: {temp})..."
+                    )
                     safety_settings = [
                         SafetySetting(
                             category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
@@ -542,7 +556,7 @@ class AISubtitler:
                             # Don't want to censor any subtitles
                             safety_settings=safety_settings,
                             system_instruction=self.system_prompt,
-                            temperature=0.1,
+                            temperature=temp,
                             http_options=HttpOptions(
                                 timeout=2 * 60 * 1000
                             ),  # 2 minutes

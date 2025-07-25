@@ -22,7 +22,7 @@ class SubtitleEvent(BaseModel):
     model_config = ConfigDict(title="Individual subtitle text")
 
 
-class SubtitleValidationException(Exception):
+class SubtitleValidationError(Exception):
     pass
 
 
@@ -95,7 +95,7 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
         return
 
     if subtitles[-1].end > (duration * 1000):
-        raise SubtitleValidationException(
+        raise SubtitleValidationError(
             f"Subtitle ends at {subtitles[-1].end} "
             + f"({precisedelta(int(subtitles[-1].end / 1000))}) "
             + f" while audio segment ends at {duration * 1000} "
@@ -105,7 +105,7 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
     prev_end = 0
     for index, event in enumerate(subtitles):
         if event.start > event.end:
-            raise SubtitleValidationException(
+            raise SubtitleValidationError(
                 f"Subtitle {index} starts at {event.start} "
                 + f"({precisedelta(int(event.start / 1000))}) "
                 + f"but ends at {event.end} ({precisedelta(int(event.end / 1000))})"
@@ -116,7 +116,7 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
             continue
 
         if event.start < prev_end:
-            raise SubtitleValidationException(
+            raise SubtitleValidationError(
                 f"Subtitle {index} starts at {event.start} "
                 + f"(({precisedelta(int(event.start / 1000))})) "
                 + f"but the previous subtitle finishes at {prev_end} "
