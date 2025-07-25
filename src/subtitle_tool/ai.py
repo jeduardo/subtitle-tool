@@ -204,6 +204,7 @@ class AISubtitler:
         """  # noqa: E501
 
     def __post_init__(self):
+        self.client = genai.Client(api_key=self.api_key)
         self.metrics = OperationMetrics()
 
     def _is_recoverable_exception(self, exception: ClientError) -> bool:
@@ -387,8 +388,7 @@ class AISubtitler:
             reraise=True,
         ):
             with attempt:
-                client = genai.Client(api_key=self.api_key)
-                ret = client.files.upload(file=file_name)
+                ret = self.client.files.upload(file=file_name)
 
         return ret
 
@@ -400,8 +400,7 @@ class AISubtitler:
             ref_name (str): Upload reference
         """
         try:
-            client = genai.Client(api_key=self.api_key)
-            client.files.delete(name=ref_name)
+            self.client.files.delete(name=ref_name)
         except Exception as e:
             # Google deletes the files in 48h, so cleanup is a courtesy.
             # This means we just issue a warning here.
@@ -517,7 +516,6 @@ class AISubtitler:
                 response = None
                 try:
                     logger.debug("Asking Gemini to generate subtitles...")
-                    client = genai.Client(api_key=self.api_key)
                     safety_settings = [
                         SafetySetting(
                             category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
@@ -537,7 +535,7 @@ class AISubtitler:
                         ),
                     ]
 
-                    response = client.models.generate_content(
+                    response = self.client.models.generate_content(
                         model=self.model_name,
                         contents=["Create subtitles for this audio file", file_ref],
                         config=GenerateContentConfig(
@@ -556,24 +554,28 @@ class AISubtitler:
                 finally:
                     if response and response.usage_metadata:
                         metadata = response.usage_metadata
+
+                        cached_token_count = sanitize_int(
+                            metadata.cached_content_token_count
+                        )
+                        thoughts_token_count = sanitize_int(
+                            metadata.thoughts_token_count
+                        )
+                        input_token_count = sanitize_int(metadata.prompt_token_count)
+                        output_token_count = sanitize_int(
+                            metadata.candidates_token_count
+                        )
                         logger.debug(
                             f"Cached token info: {metadata.cache_tokens_details}"
                         )
-                        logger.debug(
-                            f"Cached token count: {metadata.cached_content_token_count}"
-                        )
-                        logger.debug(
-                            f"Thoughts token count: {metadata.thoughts_token_count}"
-                        )
-                        logger.debug(
-                            f"Output token count: {metadata.candidates_token_count}"
-                        )
+                        logger.debug(f"Cached token count: {cached_token_count}")
+                        logger.debug(f"Thoughts token count: {thoughts_token_count}")
+                        logger.debug(f"Input token count: {input_token_count}")
+                        logger.debug(f"Output token count: {output_token_count}")
                         self.metrics.add_metrics(
-                            input_token_count=sanitize_int(metadata.prompt_token_count),
-                            output_token_count=sanitize_int(
-                                metadata.candidates_token_count
-                            )
-                            + sanitize_int(metadata.thoughts_token_count),
+                            input_token_count=input_token_count - cached_token_count,
+                            output_token_count=output_token_count
+                            + thoughts_token_count,
                         )
                 if response:
                     if isinstance(response.parsed, list):

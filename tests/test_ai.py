@@ -358,8 +358,7 @@ class TestAISubtitler(unittest.TestCase):
         )
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_upload_audio_success(self, mock_client_class, mock_temp_file):
+    def test_upload_audio_success(self, mock_temp_file):
         """Test successful audio upload and cleanup"""
         # Setup mocks needed for the method to operate
         mock_temp_file_instance = MagicMock()
@@ -368,7 +367,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_ref = Mock()
         mock_ref.name = "files/test_upload_id"
@@ -383,10 +382,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_client.files.delete.assert_called_once_with(name="files/test_upload_id")
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_upload_audio_with_delete_temp_files_false(
-        self, mock_client_class, mock_temp_file
-    ):
+    def test_upload_audio_with_delete_temp_files_false(self, mock_temp_file):
         """Test that delete_temp_files parameter is passed to NamedTemporaryFile"""
         self.subtitler.delete_temp_files = False
 
@@ -396,7 +392,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_ref = Mock()
         mock_ref.name = "files/test_upload_id"
@@ -409,8 +405,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.assert_called_once_with(suffix=".wav", delete=False)
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_upload_audio_cleanup_on_exception(self, mock_client_class, mock_temp_file):
+    def test_upload_audio_cleanup_on_exception(self, mock_temp_file):
         """Test that cleanup happens even if an exception occurs in the context"""
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -418,7 +413,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_ref = Mock()
         mock_ref.name = "files/test_upload_id"
@@ -433,13 +428,15 @@ class TestAISubtitler(unittest.TestCase):
         mock_client.files.delete.assert_called_once_with(name="files/test_upload_id")
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_upload_audio_export_failure(self, mock_client_class, mock_temp_file):
+    def test_upload_audio_export_failure(self, mock_temp_file):
         """Test handling of audio export failure"""
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
         mock_temp_file.return_value.__enter__.return_value = mock_temp_file_instance
         mock_temp_file.return_value.__exit__.return_value = None
+
+        mock_client = Mock()
+        self.subtitler.client = mock_client
 
         # Make export raise an exception
         self.mock_audio_segment.export.side_effect = Exception("Export failed")
@@ -451,11 +448,10 @@ class TestAISubtitler(unittest.TestCase):
         self.assertEqual(str(context.exception), "Export failed")
 
         # Verify that genai.Client was not called since export failed
-        mock_client_class.assert_not_called()
+        mock_client.assert_not_called()
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_upload_audio_upload_failure(self, mock_client_class, mock_temp_file):
+    def test_upload_audio_upload_failure(self, mock_temp_file):
         """Test handling of file upload failure"""
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -463,7 +459,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         # Make upload raise an exception
         mock_client.files.upload.side_effect = Exception("Upload failed")
@@ -487,10 +483,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_client.files.delete.assert_not_called()
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_upload_audio_upload_status_not_finalized_error(
-        self, mock_client_class, mock_temp_file
-    ):
+    def test_upload_audio_upload_status_not_finalized_error(self, mock_temp_file):
         """Test handling of specific genai upload status error"""
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -498,7 +491,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         # Make upload raise the specific ValueError you encountered
         mock_client.files.upload.side_effect = ValueError(
@@ -527,10 +520,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_client.files.delete.assert_not_called()
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_upload_audio_various_upload_errors(
-        self, mock_client_class, mock_temp_file
-    ):
+    def test_upload_audio_various_upload_errors(self, mock_temp_file):
         """Test handling of various upload-related errors"""
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -538,7 +528,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         # Test different types of upload errors
         upload_errors = [
@@ -552,7 +542,6 @@ class TestAISubtitler(unittest.TestCase):
             with self.subTest(error=er):
                 # Reset mocks for each test
                 mock_client.reset_mock()
-                mock_client_class.reset_mock()
                 self.mock_audio_segment.reset_mock()
 
                 # Make upload raise the specific error
@@ -580,10 +569,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_client.files.delete.assert_not_called()
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_upload_audio_delete_failure_logged(
-        self, mock_client_class, mock_temp_file
-    ):
+    def test_upload_audio_delete_failure_logged(self, mock_temp_file):
         """Test that an exception during file deletion is logged and not re-raised"""
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -591,7 +577,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_ref = Mock()
         mock_ref.name = "files/test_upload_id"
@@ -621,8 +607,7 @@ class TestAISubtitler(unittest.TestCase):
             self.assertIn("Deletion failed unexpectedly", full_warning_message)
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_transcribe_audio_success(self, mock_client_class, mock_temp_file):
+    def test_transcribe_audio_success(self, mock_temp_file):
         """Test successful audio transcription"""
         # Setup mocks needed for the method to operate
         mock_temp_file_instance = MagicMock()
@@ -631,7 +616,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_ref = Mock()
         mock_ref.name = "files/test_upload_id"
@@ -657,8 +642,7 @@ class TestAISubtitler(unittest.TestCase):
         self.assertEqual(len(result), 2)
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_upload_audio_wrong_type(self, mock_client_class, mock_temp_file):
+    def test_upload_audio_wrong_type(self, mock_temp_file):
         """Test handling of wrong type for audio segment in upload_audio"""
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -666,7 +650,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         # Pass a non-AudioSegment object
         wrong_type_audio = "not an audio segment"
@@ -679,13 +663,12 @@ class TestAISubtitler(unittest.TestCase):
 
         mock_temp_file.assert_called_once()
         # Client should not be called if export fails
-        mock_client_class.assert_not_called()
+        mock_client.assert_not_called()
 
-    @patch("google.genai.Client")
-    def test_generate_subtitles_parsed_not_list(self, mock_client_class):
+    def test_generate_subtitles_parsed_not_list(self):
         """Test _generate_subtitles when response.parsed is not a list"""
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_response = Mock()
         mock_response.usage_metadata = Mock()
@@ -714,11 +697,10 @@ class TestAISubtitler(unittest.TestCase):
         )
         self.assertEqual(self.subtitler.metrics.retries, expected_retries)
 
-    @patch("google.genai.Client")
-    def test_generate_subtitles_empty_response(self, mock_client_class):
+    def test_generate_subtitles_empty_response(self):
         """Test _generate_subtitles when response is None"""
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_client.models.generate_content.return_value = (
             None  # Simulate empty response
@@ -756,8 +738,7 @@ class TestMetrics(unittest.TestCase):
         )
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_input_output(self, mock_client_class, mock_temp_file):
+    def test_input_output(self, mock_temp_file):
         # Setup mocks needed for the method to operate
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -765,7 +746,7 @@ class TestMetrics(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_ref = Mock()
         mock_ref.name = "files/test_upload_id"
@@ -790,8 +771,7 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(metrics.throttles, 0)
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_client_errors(self, mock_client_class, mock_temp_file):
+    def test_client_errors(self, mock_temp_file):
         # Setup mocks needed for the method to operate
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -799,7 +779,7 @@ class TestMetrics(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_client.models.generate_content.side_effect = ClientError(
             code=403, response_json=json.loads(CLIENT_ERROR_403_AUTH)
@@ -825,8 +805,7 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(metrics.throttles, 0)
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_server_errors(self, mock_client_class, mock_temp_file):
+    def test_server_errors(self, mock_temp_file):
         # Setup mocks needed for the method to operate
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -834,7 +813,7 @@ class TestMetrics(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_client.models.generate_content.side_effect = ServerError(
             code=503, response_json=json.loads(SERVER_ERROR_503_UNAVAILABLE)
@@ -860,8 +839,7 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(metrics.throttles, 0)
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_throttles(self, mock_client_class, mock_temp_file):
+    def test_throttles(self, mock_temp_file):
         # Setup mocks needed for the method to operate
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -869,7 +847,7 @@ class TestMetrics(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_client.models.generate_content.side_effect = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_MINUTE)
@@ -895,8 +873,7 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(metrics.throttles, expected_throttles)
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_invalid_subtitles(self, mock_client_class, mock_temp_file):
+    def test_invalid_subtitles(self, mock_temp_file):
         # Setup mocks needed for the method to operate
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -904,7 +881,7 @@ class TestMetrics(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_ref = Mock()
         mock_ref.name = "files/test_upload_id"
@@ -938,8 +915,7 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(metrics.throttles, 0)
 
     @patch("tempfile.NamedTemporaryFile")
-    @patch("google.genai.Client")
-    def test_generation_errors(self, mock_client_class, mock_temp_file):
+    def test_generation_errors(self, mock_temp_file):
         # Setup mocks needed for the method to operate
         mock_temp_file_instance = MagicMock()
         mock_temp_file_instance.name = "/tmp/test_audio.wav"
@@ -947,7 +923,7 @@ class TestMetrics(unittest.TestCase):
         mock_temp_file.return_value.__exit__.return_value = None
 
         mock_client = Mock()
-        mock_client_class.return_value = mock_client
+        self.subtitler.client = mock_client
 
         mock_ref = Mock()
         mock_ref.name = "files/test_upload_id"
