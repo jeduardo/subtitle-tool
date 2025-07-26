@@ -46,6 +46,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
-          branch: ${{ github.ref_name }}
+          flags: unittests
+          override_branch: ${{ github.ref_name }}
           verbose: true
           fail_ci_if_error: true
