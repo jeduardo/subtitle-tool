@@ -1,6 +1,6 @@
 [project]
 name = "subtitle-tool"
-version = "0.1.41"
+version = "0.1.42"
 description = "A tool for generating subtitles using Google Gemini models."
 license = "MIT"
 keywords = [
