@@ -21,6 +21,7 @@ jobs:
         with:
           packages: ffmpeg
           version: 1.0
+          execute_install_scripts: true
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
