@@ -16,10 +16,11 @@ jobs:
         with:
           python-version-file: "pyproject.toml"
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+      - name: Cache ffmpeg install
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: ffmpeg
+          version: 1.0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
