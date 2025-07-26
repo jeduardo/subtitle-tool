@@ -39,6 +39,7 @@ jobs:
       - name: Run tests with pytest
         run: |
           uv run pytest --cov=src --cov-branch
+          ls -la .
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
