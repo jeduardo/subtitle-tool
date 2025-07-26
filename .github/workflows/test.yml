@@ -5,8 +5,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  uv-example:
-    name: python
+  run-tests:
+    name: Run tests and upload coverage
     runs-on: ubuntu-latest
 
     steps:
