@@ -15,6 +15,7 @@ from google.genai.types import (
     SafetySetting,
     ThinkingConfig,
 )
+from humanize import precisedelta
 from pydub import AudioSegment
 from tenacity import (
     RetryCallState,
@@ -134,12 +135,18 @@ class AISubtitler:
     temperature: float = 0.1
     temperature_adj: float = 0.01
     system_prompt: str = """
-        You are a professional transcriber of audio clips into subtitles.
-        You recognize which language is being spoken in the title and write the subtitle accordingly.
-        You take an audio file and you output a high-quality, perfect transcription.
-        Your output is only the subtitle content in the JSON format specified.
+        # YOUR ROLE
+        - You work as a transcriber of audio clips for English, delivering perfect transcriptions.
+        - You know many languages, are you are able to recognize the language being spoken and write the subtitle accordingly.
+        - The summary of your work is that you take an audio file and output a high-quality, perfect transcription.
+        - You strictly follow the JSON format specified and your output is only the subtitle content in this JSON format.
+        - You *DO NOT* subtitle music or music moods.
+        - You *NEVER* generate a subtitle that ends after the audio clip.
+        - You *ALWAYS* check your work before delivering it.
+        - You *NEVER DEVIATE* from the mandatory guidelines below.
+        - If the segment happens to be only music, then you issue an empty subtitle.
 
-        You follow these MANDATORY GUIDELINES:
+        # MANDATORY GUIDELINES
         1. The output is done in the JSON format specified.
         2. Each segment should be of 1-2 lines and a maximum of 5 seconds. Check the example for more reference.
         3. Use proper punctuation and capitalization.
@@ -147,7 +154,8 @@ class AISubtitler:
         5. Clean up stutters like "I I I" or "uh uh uh".
         6. After you generate the subtitles, you will MAKE ABSOLUTELY SURE that the last subtitle does not end after the audio file.
 
-        Example JSON subtitle for an audio file of 34000 milliseconds. Notice how the end of the last subtitle ends before the end of the audio file:
+        Here is an example of a JSON subtitle for an audio file of 34000 milliseconds. Notice how the last entry in the subtitle DOES NOT go beyond 34000 milliseconds.
+        <EXAMPLE>
         [
             {
                 "start": 0,
@@ -205,7 +213,7 @@ class AISubtitler:
                 "text": "I want to know who killed Diane."
             }
         ]
-
+        </EXAMPLE>
         """  # noqa: E501
 
     def __post_init__(self):
@@ -476,7 +484,7 @@ class AISubtitler:
         temp_adj = 0.0
         for attempt in Retrying(
             retry=retry_if_exception(self._subtitles_retry_handler),
-            stop=stop_after_attempt(20),
+            stop=stop_after_attempt(30),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
         ):
             with attempt:
@@ -557,6 +565,7 @@ class AISubtitler:
                             safety_settings=safety_settings,
                             system_instruction=self.system_prompt,
                             temperature=temp,
+                            top_k=50,
                             http_options=HttpOptions(
                                 timeout=2 * 60 * 1000
                             ),  # 2 minutes
@@ -617,6 +626,8 @@ class AISubtitler:
             list[SubtitleEvent: list of validated subtitles
         """
         with self.upload_audio(audio_segment) as file_ref:
+            segment_dur = precisedelta(int(audio_segment.duration_seconds))
+            logger.debug(f"Transcribing audio segment of {segment_dur}")
             subtitle_events = self._audio_to_subtitles(audio_segment, file_ref)
 
         return subtitle_events

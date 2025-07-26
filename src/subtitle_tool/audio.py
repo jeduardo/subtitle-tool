@@ -20,7 +20,7 @@ class AudioSplitter:
             that is considered silence (default: -40 dBFS)
     """
 
-    min_silence_length: int = 200
+    min_silence_length: int = 100
     silence_threshold: int = -40
 
     def split_audio(
@@ -50,6 +50,11 @@ class AudioSplitter:
         )  # type: ignore
         logging.debug(f"Extracted a total of {len(chunks)} chunks")
 
+        # Debugging metrics
+        min_duration = 9999
+        max_duration = 0
+        segments_above_thr = 0
+
         # Creating a new segment group with the top segment empty
         cur_segment = AudioSegment.silent(duration=0)
         segments = []
@@ -70,16 +75,40 @@ class AudioSplitter:
                 # This covers the case when the initial segment extracted
                 # is longer than the minimum duration period.
                 if cur_segment.duration_seconds > 0:
+                    # Metrics
+                    if segment_dur < min_duration:
+                        min_duration = segment_dur
+                    if segment_dur > max_duration:
+                        max_duration = segment_dur
+                    if segment_dur > segment_length:
+                        segments_above_thr += 1
+
                     segments.append(cur_segment)
                 cur_segment = chunk
                 logger.debug(f"Most recent segment is new chunk ({chunk_dur})")
         # Add the cur_segment to the list to complete the pass
+        segment_dur = cur_segment.duration_seconds
+        if segment_dur < min_duration:
+            min_duration = segment_dur
+        if segment_dur > max_duration:
+            max_duration = segment_dur
+        if segment_dur > segment_length:
+            segments_above_thr += 1
         segments.append(cur_segment)
 
-        segments_length = sum(group.duration_seconds for group in segments)
+        segments_length = int(sum(segment.duration_seconds for segment in segments))
+        min_duration = int(min_duration)
+        max_duration = int(max_duration)
+        avg_duration = int(segments_length / len(segments))
         logger.debug(f"Grouped segments {len(segments)}")
         logger.debug(
             f"Segments playtime: {segments_length} ({precisedelta(segments_length)})"
+        )
+        logger.debug(f"Minimum segment duration: {precisedelta(min_duration)}")
+        logger.debug(f"Maximum segment duration: {precisedelta(max_duration)}")
+        logger.debug(f"Average segment duration: {precisedelta(avg_duration)}")
+        logger.debug(
+            f"Segments longer than {precisedelta(segment_length)}: {segments_above_thr}"
         )
 
         return segments

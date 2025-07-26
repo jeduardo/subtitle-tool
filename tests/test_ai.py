@@ -679,10 +679,10 @@ class TestAISubtitler(unittest.TestCase):
             with self.assertRaises(tenacity.RetryError):
                 self.subtitler.transcribe_audio(self.mock_audio_segment)
 
-        # The transcribe audio function retries up to 20 times until
+        # The transcribe audio function retries up to 30 times until
         # it gives up. The first time, however, is done without any
         # increase because we didn't see a validation error yet.
-        target_value = self.subtitler.temperature + 19 * self.subtitler.temperature_adj
+        target_value = self.subtitler.temperature + 29 * self.subtitler.temperature_adj
 
         _, kwargs = mock_client.models.generate_content.call_args
         config = kwargs["config"]
@@ -690,7 +690,7 @@ class TestAISubtitler(unittest.TestCase):
         # Checking if the final temperature had increased
         self.assertGreater(temp, self.subtitler.temperature)
         # Checking if it increased as we predicted
-        self.assertEqual(temp, target_value)
+        self.assertAlmostEqual(temp, target_value)
 
     @patch("tempfile.NamedTemporaryFile")
     def test_upload_audio_wrong_type(self, mock_temp_file):
@@ -949,17 +949,17 @@ class TestMetrics(unittest.TestCase):
 
         # The complete subtitle generation process will try for
         # 20 times before giving up.
-        expected_invalid_subtitles = 20
+        expected_invalid_subtitles = 30
         with patch("time.sleep", lambda _: None):
             with self.assertRaises(Exception):  # noqa: B017
                 self.subtitler.transcribe_audio(self.mock_audio_segment)
                 self.fail("Should never get here")
 
         metrics = self.subtitler.metrics
-        # 20 times with 1000 tokens
-        self.assertEqual(metrics.input_token_count, 20000)
-        # 20 times with 2000 tokens + 2000 thinking tokens
-        self.assertEqual(metrics.output_token_count, 80000)
+        # 30 times with 1000 tokens
+        self.assertEqual(metrics.input_token_count, 30000)
+        # 30 times with 2000 tokens + 2000 thinking tokens
+        self.assertEqual(metrics.output_token_count, 120000)
         self.assertEqual(metrics.client_errors, 0)
         self.assertEqual(metrics.server_errors, 0)
         self.assertEqual(metrics.invalid_subtitles, expected_invalid_subtitles)

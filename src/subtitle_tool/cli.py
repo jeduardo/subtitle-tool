@@ -234,6 +234,7 @@ def main(
         duration = timedelta(seconds=round(end - start, 2))
         metrics = subtitler.metrics
 
+        click.echo(f"Audio segments processed: {len(segments)}")
         click.echo(f"Subtitle generation retries: {metrics.invalid_subtitles}")
         click.echo(
             f"AI tokens used: {metrics.input_token_count} "
