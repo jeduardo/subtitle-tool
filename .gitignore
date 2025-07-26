@@ -21,7 +21,3 @@ wheels/
 
 # IDE
 .vscode/
-
-# Tests
-.coverage
-junit/
