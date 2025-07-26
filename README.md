@@ -17,10 +17,12 @@ This utility uses Google Gemini to generate subtitles to audio and video files.
 
 ## Dependencies
 
-Export the API key for Gemini to the environment variable `GEMINI_API_KEY`
-**or** specify it in the command line with the flag `--api-key`.
+- Export the API key for Gemini to the environment variable `GEMINI_API_KEY`
+  **or** specify it in the command line with the flag `--api-key`.
 
-`ffmpeg` needs to be installed (`brew install ffmpeg`, `apt-get install ffmpeg` or `dnf install ffmpeg`)
+- `ffmpeg` needs to be installed (`brew install ffmpeg`, `apt-get install ffmpeg` or `dnf install ffmpeg`)
+
+- Ensure `uv` installs its dev dependencies with `uv sync --extra dev`.
 
 ## Installation
 

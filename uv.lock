@@ -492,7 +492,7 @@ wheels = [
 
 [[package]]
 name = "subtitle-tool"
-version = "0.1.30"
+version = "0.1.31"
 source = { editable = "." }
 dependencies = [
     { name = "audioop-lts" },
@@ -508,6 +508,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "coverage" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -517,6 +518,7 @@ dev = [
 requires-dist = [
     { name = "audioop-lts", specifier = ">=0.2.1" },
     { name = "click", specifier = ">=8.2.1" },
+    { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.8.2" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "google-genai", specifier = ">=1.16.1" },
     { name = "humanize", specifier = ">=4.12.3" },
