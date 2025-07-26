@@ -1,7 +1,10 @@
 name: "Release and bump Python version (patch)"
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Run tests"]
+    types:
+      - completed
     branches:
       - main
   workflow_dispatch:
@@ -13,6 +16,7 @@ permissions:
 jobs:
   bump-version:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       # 1. Check out the repo
