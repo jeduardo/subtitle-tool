@@ -51,9 +51,3 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.xml
-          flags: unittests
-          override_commit: ${{ github.sha }}
-          override_branch: ${{ github.ref_name }}
-          verbose: true
-          fail_ci_if_error: true
