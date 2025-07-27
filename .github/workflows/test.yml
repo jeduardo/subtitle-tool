@@ -38,7 +38,7 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          uv run pytest --cov=src --cov-branch --cov-report=xml
+          uv run pytest --cov=src --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy
           ls -la .
 
       - name: Upload test results to Codecov
