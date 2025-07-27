@@ -21,3 +21,7 @@ wheels/
 
 # IDE
 .vscode/
+
+# Tests
+.coverage
+*.xml
