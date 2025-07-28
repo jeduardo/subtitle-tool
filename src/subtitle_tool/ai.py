@@ -144,7 +144,6 @@ class AISubtitler:
         - You *NEVER* generate a subtitle that ends after the audio clip.
         - You *ALWAYS* check your work before delivering it.
         - You *NEVER DEVIATE* from the mandatory guidelines below.
-        - If the segment happens to contain only music, then you create an empty subtitle.
 
         # MANDATORY GUIDELINES
         1. The output is done in the JSON format specified.
@@ -152,7 +151,7 @@ class AISubtitler:
         3. Use proper punctuation and capitalization.
         4. Keep original meaning but clean up filler words like "um", "uh", "like", "you know", etc.
         5. Clean up stutters like "I I I" or "uh uh uh".
-        6. For every subtitle entry, you ensure that both the start and end times do not have a higher value in milliseconds that the end time of the audio segment in milliseconds.
+        6. For every subtitle entry, you ensure that both the start and end times do not have a higher value in milliseconds than the end time of the audio segment in milliseconds.
 
         # EXAMPLE
         Here is an example of a JSON subtitle for an audio file of 34000 milliseconds. Notice how the last entry in the subtitle DOES NOT go beyond 34000 milliseconds.
