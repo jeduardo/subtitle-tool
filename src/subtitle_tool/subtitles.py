@@ -118,9 +118,9 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
         if event.start < prev_end:
             raise SubtitleValidationError(
                 f"Subtitle {index} starts at {event.start} "
-                + f"(({precisedelta(int(event.start / 1000))})) "
+                + f"({precisedelta(int(event.start / 1000))}) "
                 + f"but the previous subtitle finishes at {prev_end} "
-                + f"(({precisedelta(int(prev_end / 1000))}))"
+                + f"({precisedelta(int(prev_end / 1000))})"
             )
 
         prev_end = event.end
