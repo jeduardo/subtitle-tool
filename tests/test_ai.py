@@ -738,7 +738,7 @@ class TestAISubtitler(unittest.TestCase):
             with self.assertRaisesRegex(
                 AIGenerationError, "Parsed response is not a list"
             ):
-                self.subtitler._generate_subtitles(mock_file_ref)
+                self.subtitler._generate_subtitles(0, mock_file_ref)
 
         self.assertEqual(
             self.subtitler.metrics.input_token_count, 10 * expected_retries
@@ -763,7 +763,7 @@ class TestAISubtitler(unittest.TestCase):
         expected_retries = 10
         with patch("time.sleep", lambda _: None):
             with self.assertRaisesRegex(AIGenerationError, "Response is empty"):
-                self.subtitler._generate_subtitles(mock_file_ref)
+                self.subtitler._generate_subtitles(0, mock_file_ref)
 
         self.assertEqual(self.subtitler.metrics.input_token_count, 0)
         self.assertEqual(self.subtitler.metrics.output_token_count, 0)

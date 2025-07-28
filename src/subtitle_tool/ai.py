@@ -144,7 +144,7 @@ class AISubtitler:
         - You *NEVER* generate a subtitle that ends after the audio clip.
         - You *ALWAYS* check your work before delivering it.
         - You *NEVER DEVIATE* from the mandatory guidelines below.
-        - If the segment happens to be only music, then you issue an empty subtitle.
+        - If the segment happens to contain only music, then you create an empty subtitle.
 
         # MANDATORY GUIDELINES
         1. The output is done in the JSON format specified.
@@ -152,8 +152,9 @@ class AISubtitler:
         3. Use proper punctuation and capitalization.
         4. Keep original meaning but clean up filler words like "um", "uh", "like", "you know", etc.
         5. Clean up stutters like "I I I" or "uh uh uh".
-        6. After you generate the subtitles, you will MAKE ABSOLUTELY SURE that the last subtitle does not end after the audio file.
+        6. For every subtitle entry, you ensure that both the start and end times do not have a higher value in milliseconds that the end time of the audio segment in milliseconds.
 
+        # EXAMPLE
         Here is an example of a JSON subtitle for an audio file of 34000 milliseconds. Notice how the last entry in the subtitle DOES NOT go beyond 34000 milliseconds.
         <EXAMPLE>
         [
@@ -488,15 +489,17 @@ class AISubtitler:
             before_sleep=before_sleep_log(logger, logging.DEBUG),
         ):
             with attempt:
-                subtitle_events = self._generate_subtitles(file_ref, temp_adj)
+                duration = int(audio_segment.duration_seconds)
+
+                subtitle_events = self._generate_subtitles(duration, file_ref, temp_adj)
                 temp_adj += self.temperature_adj  # To use in next call (if any)
-                validate_subtitles(subtitle_events, audio_segment.duration_seconds)
+                validate_subtitles(subtitle_events, duration)
                 logger.debug("Valid subtitles generated for segment")
 
         return subtitle_events
 
     def _generate_subtitles(
-        self, file_ref, temp_adj: float = 0.0
+        self, duration: int, file_ref: File, temp_adj: float = 0.0
     ) -> list[SubtitleEvent]:
         """
         Generate subtitles for the file uploaded onto Gemini servers.
@@ -514,7 +517,8 @@ class AISubtitler:
         10 times.
 
         Args:
-            file_id (str): identifier of uploaded file
+            duration (int): duration of the audio segment in milliseconds
+            file_id (File): identifier of uploaded file
             temp_adj (float): adjustment to configured temperature. Used to
                 increase the model temperature during new generations.
 
@@ -557,9 +561,11 @@ class AISubtitler:
                         ),
                     ]
 
+                    user_prompt = f"Create subtitles for this audio file that has a duration of {duration} milliseconds"  # noqa: E501
+
                     response = self.client.models.generate_content(
                         model=self.model_name,
-                        contents=["Create subtitles for this audio file", file_ref],
+                        contents=[user_prompt, file_ref],
                         config=GenerateContentConfig(
                             # Don't want to censor any subtitles
                             safety_settings=safety_settings,
