@@ -229,6 +229,16 @@ class TestValidateSubtitles(unittest.TestCase):
         # Should not raise exception
         validate_subtitles(subtitles, duration)
 
+    def test_with_none_subtitle(self):
+        """Test with no subtitle generated"""
+        subtitles = None
+        duration = 10.0
+
+        with self.assertRaises(SubtitleValidationError) as exc_info:
+            validate_subtitles(subtitles, duration)  # type: ignore
+
+        self.assertIn("are None", str(exc_info.exception))
+
 
 class TestSaveToJson(unittest.TestCase):
     """Test save_to_json function"""

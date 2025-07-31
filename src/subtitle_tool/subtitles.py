@@ -89,6 +89,9 @@ def validate_subtitles(subtitles: list[SubtitleEvent], duration: float):
         Exception: This method will return an exception if the subtitle is invalid.
     """
 
+    if subtitles is None:
+        raise SubtitleValidationError("Subtitles are None")
+
     # It might as well be that no subtitles are generated for a given segment,
     # when it's only music, for example.
     if len(subtitles) == 0:
