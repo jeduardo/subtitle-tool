@@ -487,6 +487,26 @@ class TestMergeSubtitleEvents(unittest.TestCase):
         self.assertEqual(result[1].text, "Line3\\nLine4")
         self.assertEqual(result[2].text, "Line5\nLine6")
 
+    def test_merge_without_validation(self):
+        """Super wrong, but I want to support this"""
+        subtitle_groups = [
+            [
+                SubtitleEvent(start=1000, end=2000, text="Line1"),
+                SubtitleEvent(start=5000, end=6000, text="Line3"),
+                SubtitleEvent(start=3000, end=4000, text="Line2"),
+            ]
+        ]
+        segment_durations = [7.0 * 1000]
+
+        result = merge_subtitle_events(
+            subtitle_groups, segment_durations, validate=False
+        )
+
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0].text, "Line1")
+        self.assertEqual(result[1].text, "Line3")
+        self.assertEqual(result[2].text, "Line2")
+
 
 class TestSubtitleValidationException(unittest.TestCase):
     """Test SubtitleValidationException"""
