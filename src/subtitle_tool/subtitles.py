@@ -142,6 +142,7 @@ def merge_subtitle_events(
     subtitle_groups: list[list[SubtitleEvent]],
     segment_durations: list[float],
     clean_newlines=True,
+    validate=True,
 ) -> list[SubtitleEvent]:
     """
     Join several groups of subtitle events into a single stream of events,
@@ -151,6 +152,8 @@ def merge_subtitle_events(
         subtitle_groups (list[list[SubtitleEvent]]): groups of subtitles
         segment_durations (list[float]): how long each segment lasts (in seconds)
         clean_newlines (bool): whether newlines should be stripped (default: True)
+        validate (bool): validate the merged result to ensure correctness
+            (default: True)
 
     Returns:
         list[SubtitleEvent]: merge subtitle stream
@@ -190,7 +193,8 @@ def merge_subtitle_events(
         # Accumulating time played for current segment for next start time
         time_shift += int(duration)
 
-    validate_subtitles(all_events, total_duration)
+    if validate:
+        validate_subtitles(all_events, total_duration)
 
     return all_events
 
