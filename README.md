@@ -42,6 +42,34 @@ uv tool update-shell
 
 ## Usage
 
+- Subtitle files with the defaults:
+
 ```shell
-subtitle-tool --video myvideo.avi
+subtitle-tool video.avi
+subtitle-tool audio.mp3
+```
+
+- Usage options:
+
+```text
+Usage: subtitle-tool [OPTIONS] MEDIAFILE
+
+  Generate subtitles for a media file
+
+Options:
+  --api-key TEXT                  Google Gemini API key
+  -m, --ai-model TEXT             Gemini model to use  [default:
+                                  gemini-2.5-flash]
+  -s, --subtitle-path TEXT        Subtitle file name [default: MEDIAFILE.srt]
+  -v, --verbose                   Enable debug logging for subtitle_tool
+                                  modules
+  -d, --debug                     Enable debug logging for all modules
+  -k, --keep-temp-files           Do not erase temporary files
+  -l, --audio-segment-length INTEGER
+                                  Length of audio segments to be subtitled in
+                                  seconds  [default: 30]
+  -p, --parallel-segments INTEGER
+                                  Number of segments subtitled in parallel
+                                  [default: 5]
+  --help                          Show this message and exit.
 ```

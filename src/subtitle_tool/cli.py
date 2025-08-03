@@ -10,16 +10,14 @@ from pathlib import Path
 
 import click
 from humanize.time import precisedelta
-from pydub import AudioSegment
 
 from subtitle_tool.ai import AISubtitler
-from subtitle_tool.audio import AudioSplitter
+from subtitle_tool.audio import AudioExtractionError, AudioSplitter, extract_audio
 from subtitle_tool.subtitles import (
     equalize_subtitles,
     events_to_subtitles,
     merge_subtitle_events,
 )
-from subtitle_tool.video import VideoProcessingError, extract_audio
 
 API_KEY_NAME = "GEMINI_API_KEY"
 AI_DEFAULT_MODEL = "gemini-2.5-flash"
@@ -58,6 +56,16 @@ def setup_logging(verbose=False, debug=False):
 
 
 @click.command()
+@click.argument(
+    "mediafile",
+    type=click.Path(
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        path_type=Path,
+    ),
+)
 @click.option(
     "--api-key",
     envvar=API_KEY_NAME,
@@ -70,60 +78,44 @@ def setup_logging(verbose=False, debug=False):
     type=click.STRING,
     default=AI_DEFAULT_MODEL,
     help="Gemini model to use",
-)
-@click.option(
-    "-vf",
-    "--video",
-    help="Path to video file",
-    type=click.Path(
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        readable=True,
-        path_type=Path,
-    ),
-)
-@click.option(
-    "-af",
-    "--audio",
-    help="Path to audio file",
-    type=click.Path(
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        readable=True,
-        path_type=Path,
-    ),
+    show_default=True,
 )
 @click.option(
     "-s",
     "--subtitle-path",
-    help="Path to save subtitles",
+    help="Subtitle file name [default: MEDIAFILE.srt]",
 )
 @click.option(
     "-v",
     "--verbose",
     is_flag=True,
+    default=False,
     help="Enable debug logging for subtitle_tool modules",
+    show_default=True,
 )
 @click.option(
     "-d",
     "--debug",
     is_flag=True,
+    default=False,
     help="Enable debug logging for all modules",
+    show_default=True,
 )
 @click.option(
     "-k",
     "--keep-temp-files",
     is_flag=True,
+    default=False,
     help="Do not erase temporary files",
+    show_default=True,
 )
 @click.option(
     "-l",
     "--audio-segment-length",
     type=click.INT,
-    help="Length of audio segments to be subtitled in seconds (default: 30)",
+    help="Length of audio segments to be subtitled in seconds",
     default=30,
+    show_default=True,
 )
 @click.option(
     "-p",
@@ -131,12 +123,12 @@ def setup_logging(verbose=False, debug=False):
     help="Number of segments subtitled in parallel",
     type=click.INT,
     default=5,
+    show_default=True,
 )
 def main(
+    mediafile: Path,
     api_key: str,
     ai_model: str,
-    video: Path,
-    audio: Path,
     subtitle_path: str,
     verbose: bool,
     debug: bool,
@@ -144,6 +136,7 @@ def main(
     audio_segment_length: int,
     parallel_segments: int,
 ) -> None:
+    """Generate subtitles for a media file"""
     setup_logging(debug=debug, verbose=verbose)
 
     start = time.time()
@@ -154,21 +147,14 @@ def main(
             + "in the environment variable {API_KEY_NAME}"
         )
 
-    if not audio and not video or audio and video:
-        raise click.MissingParameter("Either --video or --audio need to be specified")
-
-    click.echo(f"Generating subtitles for {video if video else audio}")
+    click.echo(f"Generating subtitles for {mediafile}")
 
     executor = None
 
     try:
-        # 1. Load audio stream from either video or audio file
-        media_path = video if video else audio
         try:
-            audio_stream = (
-                extract_audio(video) if video else AudioSegment.from_file(audio)
-            )
-        except VideoProcessingError as e:
+            audio_stream = extract_audio(f"{mediafile}")
+        except AudioExtractionError as e:
             raise click.ClickException(f"Error loading audio stream: {e}") from e
         click.echo(f"Audio loaded ({precisedelta(int(audio_stream.duration_seconds))})")
 
@@ -218,7 +204,7 @@ def main(
 
         # 6. Backup existing subtitle (if exists)
         if not subtitle_path:
-            subtitle_path = f"{media_path.parent}/{media_path.stem}.srt"
+            subtitle_path = f"{mediafile.parent}/{mediafile.stem}.srt"
 
         if Path(subtitle_path).exists():
             dst = f"{subtitle_path}.bak"
