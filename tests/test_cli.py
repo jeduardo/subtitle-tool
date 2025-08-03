@@ -15,10 +15,9 @@ from pydub import AudioSegment
 from pydub.generators import WhiteNoise
 from pysubs2 import SSAFile
 
-from subtitle_tool.audio import AudioSplitter
+from subtitle_tool.audio import AudioExtractionError, AudioSplitter
 from subtitle_tool.cli import API_KEY_NAME, main, setup_logging
 from subtitle_tool.subtitles import SubtitleEvent
-from subtitle_tool.video import VideoProcessingError
 
 
 class TestSetupLogging(unittest.TestCase):
@@ -93,7 +92,7 @@ class TestMainCommand(unittest.TestCase):
     def test_missing_api_key(self):
         """Test that missing API key raises proper error"""
         os.environ.pop(API_KEY_NAME, None)
-        result = self.runner.invoke(main, ["--video", str(self.test_video_path)])
+        result = self.runner.invoke(main, [str(self.test_video_path)])
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("API key not informed", result.output)
 
@@ -101,44 +100,26 @@ class TestMainCommand(unittest.TestCase):
         """Test that missing both video and audio arguments raises error"""
         result = self.runner.invoke(main, ["--api-key", "test_key"])
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Either --video or --audio need to be specified", result.output)
-
-    def test_both_video_and_audio_specified(self):
-        """Test that specifying both video and audio raises error"""
-        result = self.runner.invoke(
-            main,
-            [
-                "--api-key",
-                "test_key",
-                "--video",
-                str(self.test_video_path),
-                "--audio",
-                str(self.test_audio_path),
-            ],
-        )
-        self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Either --video or --audio need to be specified", result.output)
+        self.assertIn("Usage: main [OPTIONS]", result.output)
 
     def test_nonexistent_file(self):
         """Test that nonexistent file raises proper error"""
         nonexistent_path = Path(self.temp_dir) / "nonexistent.mp4"
         result = self.runner.invoke(
-            main, ["--api-key", "test_key", "--video", str(nonexistent_path)]
+            main, ["--api-key", "test_key", str(nonexistent_path)]
         )
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn(f"File '{nonexistent_path}' does not exist", result.output)
 
     def test_directory_instead_of_file(self):
         """Test that directory path raises proper error"""
-        result = self.runner.invoke(
-            main, ["--api-key", "test_key", "--video", str(self.temp_dir)]
-        )
+        result = self.runner.invoke(main, ["--api-key", "test_key", str(self.temp_dir)])
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn(f"File '{self.temp_dir}' is a directory", result.output)
 
     @patch.object(ThreadPoolExecutor, "map")
     @patch.object(AudioSplitter, "split_audio")
-    @patch("subtitle_tool.video.extract_audio")
+    @patch("subtitle_tool.audio.extract_audio")
     @patch.object(SSAFile, "to_file")
     @patch("subtitle_tool.cli.equalize_subtitles")
     @patch("subtitle_tool.cli.merge_subtitle_events")
@@ -199,7 +180,6 @@ class TestMainCommand(unittest.TestCase):
                     [
                         "--api-key",
                         "test_key",
-                        "--video",
                         str(self.test_video_path),
                         "--debug",
                     ],
@@ -263,7 +243,6 @@ class TestMainCommand(unittest.TestCase):
                     [
                         "--api-key",
                         "test_key",
-                        "--audio",
                         str(self.test_audio_path),
                     ],
                 )
@@ -275,12 +254,12 @@ class TestMainCommand(unittest.TestCase):
     @patch("subtitle_tool.cli.extract_audio")
     def test_video_audio_extraction_error(self, mock_extract_audio):
         """Test error handling when audio extraction fails"""
-        mock_extract_audio.side_effect = VideoProcessingError(
+        mock_extract_audio.side_effect = AudioExtractionError(
             "Error loading audio stream"
         )
 
         result = self.runner.invoke(
-            main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
+            main, ["--api-key", "test_key", str(self.test_video_path)]
         )
 
         self.assertNotEqual(result.exit_code, 0)
@@ -308,7 +287,7 @@ class TestMainCommand(unittest.TestCase):
         mock_map.side_effect = KeyboardInterrupt()
 
         result = self.runner.invoke(
-            main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
+            main, ["--api-key", "test_key", str(self.test_video_path)]
         )
 
         self.assertNotEqual(result.exit_code, 0)
@@ -372,7 +351,6 @@ class TestMainCommand(unittest.TestCase):
                 [
                     "--api-key",
                     "test_key",
-                    "--video",
                     str(self.test_video_path),
                 ],
             )
@@ -388,14 +366,14 @@ class TestMainCommand(unittest.TestCase):
         """Test that verbose and debug flags work"""
         # Test verbose flag
         result = self.runner.invoke(
-            main, ["--api-key", "test_key", "--verbose", "--video", "/nonexistent/path"]
+            main, ["--api-key", "test_key", "--verbose", "/nonexistent/path"]
         )
         # Should fail on file not existing
         self.assertIn("does not exist", result.output)
 
         # Test debug flag
         result = self.runner.invoke(
-            main, ["--api-key", "test_key", "--debug", "--video", "/nonexistent/path"]
+            main, ["--api-key", "test_key", "--debug", "/nonexistent/path"]
         )
         # Should fail on file not existing
         self.assertIn("does not exist", result.output)
@@ -421,7 +399,7 @@ class TestErrorHandling(unittest.TestCase):
         mock_extract_audio.side_effect = RuntimeError("Unexpected internal error")
 
         result = self.runner.invoke(
-            main, ["--api-key", "test_key", "--video", str(self.test_video_path)]
+            main, ["--api-key", "test_key", str(self.test_video_path)]
         )
 
         self.assertEqual(result.exit_code, 1)
@@ -437,7 +415,6 @@ class TestErrorHandling(unittest.TestCase):
             [
                 "--api-key",
                 "test_key",
-                "--video",
                 str(self.test_video_path),
                 "--verbose",
             ],
@@ -460,7 +437,6 @@ class TestErrorHandling(unittest.TestCase):
             [
                 "--api-key",
                 "test_key",
-                "--video",
                 str(self.test_video_path),
                 "--debug",
             ],
