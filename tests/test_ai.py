@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import tenacity
 from google.genai.errors import ClientError, ServerError
+from google.genai.types import FinishReason
 from pydub import AudioSegment
 from tenacity import RetryCallState
 
@@ -14,7 +15,7 @@ from subtitle_tool.ai import (
     _is_recoverable_exception,
     _wait_api_limit,
 )
-from subtitle_tool.subtitles import SubtitleEvent
+from subtitle_tool.subtitles import SubtitleEvent, SubtitleValidationError
 
 # Running tests in DEBUG will help to troubleshoot errors on changes
 logging.getLogger("subtitle_tool").setLevel(logging.DEBUG)
@@ -731,6 +732,9 @@ class TestAISubtitler(unittest.TestCase):
         mock_response.usage_metadata.candidates_token_count = 20
         mock_response.usage_metadata.thoughts_token_count = 5
         mock_response.parsed = "not a list"  # Simulate wrong type
+        mock_candidate = Mock()
+        mock_candidate.finish_reason = FinishReason.MAX_TOKENS  # Common
+        mock_response.candidates = [mock_candidate]
 
         mock_client.models.generate_content.return_value = mock_response
 
@@ -751,6 +755,29 @@ class TestAISubtitler(unittest.TestCase):
             self.subtitler.metrics.output_token_count, 25 * expected_retries
         )
         self.assertEqual(self.subtitler.metrics.retries, expected_retries)
+
+    def test_generate_subtitles_content_flagged(self):
+        mock_client = Mock()
+        self.subtitler.client = mock_client
+
+        mock_response = Mock()
+        mock_response.usage_metadata = Mock()
+        mock_response.usage_metadata.prompt_token_count = 10
+        mock_response.usage_metadata.candidates_token_count = 20
+        mock_response.usage_metadata.thoughts_token_count = 5
+        mock_candidate = Mock()
+        mock_response.candidates = [mock_candidate]
+        mock_response.parsed = "not a list"  # Simulate wrong type
+        mock_candidate.finish_reason = FinishReason.PROHIBITED_CONTENT
+
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_file_ref = Mock()
+        mock_file_ref.name = "files/test_upload_id"
+
+        with self.assertRaises(SubtitleValidationError):
+            self.subtitler._generate_subtitles(0, mock_file_ref)
+            self.fail("Should not get here")
 
     def test_generate_subtitles_empty_response(self):
         """Test _generate_subtitles when response is None"""

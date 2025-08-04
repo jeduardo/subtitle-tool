@@ -8,7 +8,9 @@ from google import genai
 from google.genai.errors import ClientError, ServerError
 from google.genai.types import (
     File,
+    FinishReason,
     GenerateContentConfig,
+    GenerateContentResponse,
     HarmBlockThreshold,
     HarmCategory,
     HttpOptions,
@@ -357,19 +359,15 @@ class AISubtitler:
             bool: True if we should retry
         """
 
-        # We want to return False on all exceptions we don't know so we can avoid
-        # unneeded retries for problems we don't know about.
-        should_ret = False
-
         if isinstance(exception, SubtitleValidationError):
             logger.debug(f"Invalid subtitles generated: {exception}")
             self.metrics.add_metrics(invalid_subtitles=1)
-            should_ret = True
-
-        if should_ret:
             self.metrics.add_metrics(retries=1)
+            return True
 
-        return should_ret
+        # We want to return False on all exceptions we don't know so we can avoid
+        # unneeded retries for problems we don't know about.
+        return False
 
     def _upload_file(self, file_name: str) -> File:
         """
@@ -526,8 +524,8 @@ class AISubtitler:
             reraise=True,
         ):
             with attempt:
-                response = None
                 temp = self.temperature + temp_adj
+                response = GenerateContentResponse()
                 try:
                     logger.debug(
                         f"Asking Gemini to generate subtitles (temp: {temp})..."
@@ -600,6 +598,17 @@ class AISubtitler:
                     if isinstance(response.parsed, list):
                         ret = response.parsed
                     else:
+                        for candidate in response.candidates or []:
+                            if (
+                                candidate.finish_reason
+                                == FinishReason.PROHIBITED_CONTENT
+                            ):
+                                logger.debug(
+                                    "Content flagged as prohibited, raising error"
+                                )
+                                raise SubtitleValidationError(
+                                    "Content flagged as prohibited"
+                                )
                         logger.debug(f"Parsed response is not a list: {response}")
                         raise AIGenerationError("Parsed response is not a list")
                 else:
