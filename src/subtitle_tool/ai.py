@@ -35,8 +35,6 @@ from subtitle_tool.utils import sanitize_int
 
 logger = logging.getLogger("subtitle_tool.ai")
 
-DEFAULT_WAIT_TIME = 15.0
-
 
 class AIGenerationError(BaseException):
     pass
@@ -68,63 +66,56 @@ def _is_recoverable_exception(exception) -> bool:
     return True
 
 
-def _extract_retry_delay(exception: ClientError) -> float:
-    """
-    Extract retry delay from rate-limit message.
-    It will return 60 seconds on parsing error.
-
-    Args:
-        exception: The exception object
-
-    Returns:
-        float: Retry delay in seconds, defaults to 15 if not found
-    """
-    try:
-        for detail in exception.details["error"]["details"]:
-            if detail.get("@type") == "type.googleapis.com/google.rpc.RetryInfo":
-                retry_delay = detail.get("retryDelay", "")
-                if retry_delay.endswith("s"):
-                    delay = float(retry_delay[:-1])
-                    if delay == 0:
-                        logger.warning(
-                            f"Delay returned is zero, waiting the default {DEFAULT_WAIT_TIME} instead"  # noqa: E501
-                        )
-                        return DEFAULT_WAIT_TIME
-                    else:
-                        return delay
-    except Exception as e:
-        logger.warning(f"Could not parse retry delay from exception: {e}")
-
-    # Default fallback delay
-    return DEFAULT_WAIT_TIME
-
-
-def _wait_api_limit(retry_state: RetryCallState) -> float:
+def _wait_api_limit(retry_state: RetryCallState, default: float = 1.0) -> float | None:
     """
 
     Extracts the retry delay from rate limit messages.
     From internal exceptions, it retries after 15 seconds.
 
     Args:
-        retry_state: The retry state object from tenacity
+        retry_state (RetryCallState): Retry state object from tenacity
+        default (float): default waiting time if there is a parsing error
+            of the API value or None if no value is found in error.
 
     Returns:
-        float: The sleep duration
+        float: sleep duration
     """
     if retry_state.outcome and retry_state.outcome.failed:
-        exception = retry_state.outcome.exception()
+        ex = retry_state.outcome.exception()
+        if not ex or not hasattr(ex, "details"):
+            return None
 
-        if isinstance(exception, ClientError):
-            if exception.code == 429:
-                delay = _extract_retry_delay(exception)
-                logger.debug(
-                    f"Rate limit hit, sleeping for {delay} seconds as "
-                    + "suggested by API"
-                )
-                return delay
+        for detail in ex.details.get("error", {}).get("details", []) or []:  # type: ignore
+            if detail.get("@type") == "type.googleapis.com/google.rpc.RetryInfo":
+                rd = detail.get("retryDelay", "")
+                if rd.endswith("s"):
+                    try:
+                        secs = float(rd[:-1])
+                        logger.debug(
+                            f"Rate limit hit, sleeping for {secs} seconds as "
+                            + "suggested by API"
+                        )
+                    except ValueError:
+                        return default
+                    return secs or default
+        return None
 
-    # Default delay for other cases
-    return DEFAULT_WAIT_TIME
+
+class WaitExponentialOrServerDelay:
+    def __init__(self, multiplier=1, max=16, default_wait=1):
+        self._exp = wait_exponential(multiplier=multiplier, max=max)
+        self._default = default_wait
+
+    def __call__(self, retry_state):
+        api_delay = _wait_api_limit(retry_state, default=self._default)
+        if api_delay is not None:
+            return api_delay
+
+        api_delay = self._exp(retry_state)
+        logger.debug(
+            f"No wait time suggested by API, using exponential backoff logic wait time: {api_delay}"  # noqa: E501
+        )
+        return api_delay
 
 
 @dataclass
@@ -529,7 +520,7 @@ class AISubtitler:
 
         for attempt in Retrying(
             retry=retry_if_exception(self._ai_retry_handler),
-            wait=_wait_api_limit,
+            wait=WaitExponentialOrServerDelay(multiplier=1, max=16, default_wait=1),
             stop=stop_after_attempt(10),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
             reraise=True,

@@ -9,10 +9,8 @@ from pydub import AudioSegment
 from tenacity import RetryCallState
 
 from subtitle_tool.ai import (
-    DEFAULT_WAIT_TIME,
     AIGenerationError,
     AISubtitler,
-    _extract_retry_delay,
     _is_recoverable_exception,
     _wait_api_limit,
 )
@@ -100,6 +98,46 @@ CLIENT_ERROR_429_RATE_LIMIT_DAY = """
 }
 """  # noqa: E501
 
+
+CLIENT_ERROR_429_RATE_LIMIT_DAY_BOGUS_VALUE = """
+{
+    "error": {
+        "code": 429,
+        "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.",
+        "status": "RESOURCE_EXHAUSTED",
+        "details": [
+        {
+            "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+            "violations": [
+            {
+                "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+                "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                "quotaDimensions": {
+                "location": "global",
+                "model": "gemini-2.5-flash"
+                },
+                "quotaValue": "10"
+            }
+            ]
+        },
+        {
+            "@type": "type.googleapis.com/google.rpc.Help",
+            "links": [
+            {
+                "description": "Learn more about Gemini API quotas",
+                "url": "https://ai.google.dev/gemini-api/docs/rate-limits"
+            }
+            ]
+        },
+        {
+            "@type": "type.googleapis.com/google.rpc.RetryInfo",
+            "retryDelay": "test-s"
+        }
+        ]
+    }
+}
+"""  # noqa: E501
+
 CLIENT_ERROR_403_AUTH = """
 {
     "error": {
@@ -167,59 +205,6 @@ class TestIsRecoverable(unittest.TestCase):
         self.assertTrue(_is_recoverable_exception(error))  # type: ignore
 
 
-class TestExtractRetryDelay(unittest.TestCase):
-    def setUp(self) -> None:
-        self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
-
-    def test_client_rate_limit_per_minute(self):
-        error = ClientError(
-            code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_MINUTE)
-        )
-        delay = _extract_retry_delay(error)
-        self.assertEqual(delay, 33.0)
-
-    def test_client_rate_limit_per_minute_zero_delay(self):
-        error = ClientError(
-            code=429,
-            response_json=json.loads(
-                CLIENT_ERROR_429_RATE_LIMIT_MINUTE.replace("33s", "0s")
-            ),
-        )
-        delay = _extract_retry_delay(error)
-        self.assertEqual(delay, DEFAULT_WAIT_TIME)
-
-    def test_client_rate_limit_per_day(self):
-        error = ClientError(
-            code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_DAY)
-        )
-        delay = _extract_retry_delay(error)
-        self.assertEqual(delay, 33.0)
-
-    def test_client_auth_error(self):
-        error = ClientError(code=403, response_json=json.loads(CLIENT_ERROR_403_AUTH))
-        delay = _extract_retry_delay(error)
-        self.assertEqual(delay, DEFAULT_WAIT_TIME)
-
-    def test_server_internal_error(self):
-        error = ServerError(
-            code=500, response_json=json.loads(SERVER_ERROR_500_INTERNAL)
-        )
-        delay = _extract_retry_delay(error)  # type: ignore
-        self.assertEqual(delay, DEFAULT_WAIT_TIME)
-
-    def test_server_unavailable_error(self):
-        error = ServerError(
-            code=503, response_json=json.loads(SERVER_ERROR_503_UNAVAILABLE)
-        )
-        delay = _extract_retry_delay(error)  # type: ignore
-        self.assertEqual(delay, DEFAULT_WAIT_TIME)
-
-    def test_generic_exception(self):
-        error = Exception("Generic exception")
-        delay = _extract_retry_delay(error)  # type: ignore
-        self.assertEqual(delay, DEFAULT_WAIT_TIME)
-
-
 class TestWaitApiLimit(unittest.TestCase):
     def setUp(self) -> None:
         self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
@@ -264,8 +249,8 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = _wait_api_limit(retry_state)
-        self.assertEqual(result, DEFAULT_WAIT_TIME)
+        result = _wait_api_limit(retry_state, 99.0)
+        self.assertIsNone(result)
 
     def test_server_internal_error(self):
         error = ServerError(
@@ -279,8 +264,8 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = _wait_api_limit(retry_state)
-        self.assertEqual(result, DEFAULT_WAIT_TIME)
+        result = _wait_api_limit(retry_state, 99.0)
+        self.assertIsNone(result)
 
     def test_server_unavailable_error(self):
         error = ServerError(
@@ -294,8 +279,8 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = _wait_api_limit(retry_state)
-        self.assertEqual(result, DEFAULT_WAIT_TIME)
+        result = _wait_api_limit(retry_state, 99.0)
+        self.assertIsNone(result)
 
     def test_generic_exception(self):
         error = Exception("Generic Exception")
@@ -307,8 +292,24 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = _wait_api_limit(retry_state)
-        self.assertEqual(result, DEFAULT_WAIT_TIME)
+        result = _wait_api_limit(retry_state, 99.0)
+        self.assertIsNone(result)
+
+    def test_default_on_wrong_parsing(self):
+        error = ClientError(
+            code=429,
+            response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_DAY_BOGUS_VALUE),
+        )
+
+        mock_outcome = Mock()
+        mock_outcome.failed = True
+        mock_outcome.exception.return_value = error
+
+        retry_state = Mock(spec=RetryCallState)
+        retry_state.outcome = mock_outcome
+
+        result = _wait_api_limit(retry_state, 99.0)
+        self.assertEqual(result, 99.0)
 
 
 class TestRetryHandler(unittest.TestCase):
