@@ -12,6 +12,9 @@ from subtitle_tool.ai import (
     DEFAULT_WAIT_TIME,
     AIGenerationError,
     AISubtitler,
+    _extract_retry_delay,
+    _is_recoverable_exception,
+    _wait_api_limit,
 )
 from subtitle_tool.subtitles import SubtitleEvent
 
@@ -135,33 +138,33 @@ class TestIsRecoverable(unittest.TestCase):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_MINUTE)
         )
-        self.assertTrue(self.subtitler._is_recoverable_exception(error))
+        self.assertTrue(_is_recoverable_exception(error))
 
     def test_client_rate_limit_per_day(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_DAY)
         )
-        self.assertFalse(self.subtitler._is_recoverable_exception(error))
+        self.assertFalse(_is_recoverable_exception(error))
 
     def test_client_auth_error(self):
         error = ClientError(code=403, response_json=json.loads(CLIENT_ERROR_403_AUTH))
-        self.assertTrue(self.subtitler._is_recoverable_exception(error))
+        self.assertTrue(_is_recoverable_exception(error))
 
     def test_server_internal_error(self):
         error = ServerError(
             code=500, response_json=json.loads(SERVER_ERROR_500_INTERNAL)
         )
-        self.assertTrue(self.subtitler._is_recoverable_exception(error))  # type: ignore
+        self.assertTrue(_is_recoverable_exception(error))  # type: ignore
 
     def test_server_unavailable_error(self):
         error = ServerError(
             code=503, response_json=json.loads(SERVER_ERROR_503_UNAVAILABLE)
         )
-        self.assertTrue(self.subtitler._is_recoverable_exception(error))  # type: ignore
+        self.assertTrue(_is_recoverable_exception(error))  # type: ignore
 
     def test_generic_exception(self):
         error = Exception("Generic Exception")
-        self.assertTrue(self.subtitler._is_recoverable_exception(error))  # type: ignore
+        self.assertTrue(_is_recoverable_exception(error))  # type: ignore
 
 
 class TestExtractRetryDelay(unittest.TestCase):
@@ -172,7 +175,7 @@ class TestExtractRetryDelay(unittest.TestCase):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_MINUTE)
         )
-        delay = self.subtitler._extract_retry_delay(error)
+        delay = _extract_retry_delay(error)
         self.assertEqual(delay, 33.0)
 
     def test_client_rate_limit_per_minute_zero_delay(self):
@@ -182,38 +185,38 @@ class TestExtractRetryDelay(unittest.TestCase):
                 CLIENT_ERROR_429_RATE_LIMIT_MINUTE.replace("33s", "0s")
             ),
         )
-        delay = self.subtitler._extract_retry_delay(error)
+        delay = _extract_retry_delay(error)
         self.assertEqual(delay, DEFAULT_WAIT_TIME)
 
     def test_client_rate_limit_per_day(self):
         error = ClientError(
             code=429, response_json=json.loads(CLIENT_ERROR_429_RATE_LIMIT_DAY)
         )
-        delay = self.subtitler._extract_retry_delay(error)
+        delay = _extract_retry_delay(error)
         self.assertEqual(delay, 33.0)
 
     def test_client_auth_error(self):
         error = ClientError(code=403, response_json=json.loads(CLIENT_ERROR_403_AUTH))
-        delay = self.subtitler._extract_retry_delay(error)
+        delay = _extract_retry_delay(error)
         self.assertEqual(delay, DEFAULT_WAIT_TIME)
 
     def test_server_internal_error(self):
         error = ServerError(
             code=500, response_json=json.loads(SERVER_ERROR_500_INTERNAL)
         )
-        delay = self.subtitler._extract_retry_delay(error)  # type: ignore
+        delay = _extract_retry_delay(error)  # type: ignore
         self.assertEqual(delay, DEFAULT_WAIT_TIME)
 
     def test_server_unavailable_error(self):
         error = ServerError(
             code=503, response_json=json.loads(SERVER_ERROR_503_UNAVAILABLE)
         )
-        delay = self.subtitler._extract_retry_delay(error)  # type: ignore
+        delay = _extract_retry_delay(error)  # type: ignore
         self.assertEqual(delay, DEFAULT_WAIT_TIME)
 
     def test_generic_exception(self):
         error = Exception("Generic exception")
-        delay = self.subtitler._extract_retry_delay(error)  # type: ignore
+        delay = _extract_retry_delay(error)  # type: ignore
         self.assertEqual(delay, DEFAULT_WAIT_TIME)
 
 
@@ -233,7 +236,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = self.subtitler._wait_api_limit(retry_state)
+        result = _wait_api_limit(retry_state)
         self.assertEqual(result, 33.0)
 
     def test_client_rate_limit_per_day(self):
@@ -248,7 +251,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = self.subtitler._wait_api_limit(retry_state)
+        result = _wait_api_limit(retry_state)
         self.assertEqual(result, 33.0)
 
     def test_client_auth_error(self):
@@ -261,7 +264,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = self.subtitler._wait_api_limit(retry_state)
+        result = _wait_api_limit(retry_state)
         self.assertEqual(result, DEFAULT_WAIT_TIME)
 
     def test_server_internal_error(self):
@@ -276,7 +279,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = self.subtitler._wait_api_limit(retry_state)
+        result = _wait_api_limit(retry_state)
         self.assertEqual(result, DEFAULT_WAIT_TIME)
 
     def test_server_unavailable_error(self):
@@ -291,7 +294,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = self.subtitler._wait_api_limit(retry_state)
+        result = _wait_api_limit(retry_state)
         self.assertEqual(result, DEFAULT_WAIT_TIME)
 
     def test_generic_exception(self):
@@ -304,7 +307,7 @@ class TestWaitApiLimit(unittest.TestCase):
         retry_state = Mock(spec=RetryCallState)
         retry_state.outcome = mock_outcome
 
-        result = self.subtitler._wait_api_limit(retry_state)
+        result = _wait_api_limit(retry_state)
         self.assertEqual(result, DEFAULT_WAIT_TIME)
 
 

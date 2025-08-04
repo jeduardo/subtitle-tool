@@ -42,6 +42,91 @@ class AIGenerationError(BaseException):
     pass
 
 
+def _is_recoverable_exception(exception) -> bool:
+    """
+    This is an overly optimistic function that deems that all exceptions
+    are recoverable except ones that fail because of exceeded daily
+    quotas.
+
+    Args:
+        exception: API error raised by Gemini
+
+    Returns:
+        bool: able to recover or not
+    """
+    if isinstance(exception, ClientError):
+        if exception.code == 429:
+            details = exception.details["error"]["details"]
+            for detail in details:
+                if detail.get("@type") == "type.googleapis.com/google.rpc.QuotaFailure":
+                    for violation in detail.get("violations"):
+                        # min: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
+                        # day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+                        if "PerDay" in violation["quotaId"]:
+                            return False
+
+    return True
+
+
+def _extract_retry_delay(exception: ClientError) -> float:
+    """
+    Extract retry delay from rate-limit message.
+    It will return 60 seconds on parsing error.
+
+    Args:
+        exception: The exception object
+
+    Returns:
+        float: Retry delay in seconds, defaults to 15 if not found
+    """
+    try:
+        for detail in exception.details["error"]["details"]:
+            if detail.get("@type") == "type.googleapis.com/google.rpc.RetryInfo":
+                retry_delay = detail.get("retryDelay", "")
+                if retry_delay.endswith("s"):
+                    delay = float(retry_delay[:-1])
+                    if delay == 0:
+                        logger.warning(
+                            f"Delay returned is zero, waiting the default {DEFAULT_WAIT_TIME} instead"  # noqa: E501
+                        )
+                        return DEFAULT_WAIT_TIME
+                    else:
+                        return delay
+    except Exception as e:
+        logger.warning(f"Could not parse retry delay from exception: {e}")
+
+    # Default fallback delay
+    return DEFAULT_WAIT_TIME
+
+
+def _wait_api_limit(retry_state: RetryCallState) -> float:
+    """
+
+    Extracts the retry delay from rate limit messages.
+    From internal exceptions, it retries after 15 seconds.
+
+    Args:
+        retry_state: The retry state object from tenacity
+
+    Returns:
+        float: The sleep duration
+    """
+    if retry_state.outcome and retry_state.outcome.failed:
+        exception = retry_state.outcome.exception()
+
+        if isinstance(exception, ClientError):
+            if exception.code == 429:
+                delay = _extract_retry_delay(exception)
+                logger.debug(
+                    f"Rate limit hit, sleeping for {delay} seconds as "
+                    + "suggested by API"
+                )
+                return delay
+
+    # Default delay for other cases
+    return DEFAULT_WAIT_TIME
+
+
 @dataclass
 class OperationMetrics:
     """
@@ -220,91 +305,6 @@ class AISubtitler:
         self.client = genai.Client(api_key=self.api_key)
         self.metrics = OperationMetrics()
 
-    def _is_recoverable_exception(self, exception: ClientError) -> bool:
-        """
-        This is an overly optimistic function that deems that all exceptions
-        are recoverable except ones that fail because of exceeded daily
-        quotas.
-
-        Args:
-            exception (ClientError): a Gemini ClientError
-
-        Returns:
-            bool: able to recover or not
-        """
-        if isinstance(exception, ClientError):
-            if exception.code == 429:
-                details = exception.details["error"]["details"]
-                for detail in details:
-                    if (
-                        detail.get("@type")
-                        == "type.googleapis.com/google.rpc.QuotaFailure"
-                    ):
-                        for violation in detail.get("violations"):
-                            # min: GenerateRequestsPerMinutePerProjectPerModel-FreeTier
-                            # day: GenerateRequestsPerDayPerProjectPerModel-FreeTier
-                            if "PerDay" in violation["quotaId"]:
-                                return False
-
-        return True
-
-    def _extract_retry_delay(self, exception: ClientError) -> float:
-        """
-        Extract retry delay from rate-limit message.
-        It will return 60 seconds on parsing error.
-
-        Args:
-            exception: The exception object
-
-        Returns:
-            float: Retry delay in seconds, defaults to 15 if not found
-        """
-        try:
-            for detail in exception.details["error"]["details"]:
-                if detail.get("@type") == "type.googleapis.com/google.rpc.RetryInfo":
-                    retry_delay = detail.get("retryDelay", "")
-                    if retry_delay.endswith("s"):
-                        delay = float(retry_delay[:-1])
-                        if delay == 0:
-                            logger.warning(
-                                f"Delay returned is zero, waiting the default {DEFAULT_WAIT_TIME} instead"  # noqa: E501
-                            )
-                            return DEFAULT_WAIT_TIME
-                        else:
-                            return delay
-        except Exception as e:
-            logger.warning(f"Could not parse retry delay from exception: {e}")
-
-        # Default fallback delay
-        return DEFAULT_WAIT_TIME
-
-    def _wait_api_limit(self, retry_state: RetryCallState) -> float:
-        """
-
-        Extracts the retry delay from rate limit messages.
-        From internal exceptions, it retries after 15 seconds.
-
-        Args:
-            retry_state: The retry state object from tenacity
-
-        Returns:
-            float: The sleep duration
-        """
-        if retry_state.outcome and retry_state.outcome.failed:
-            exception = retry_state.outcome.exception()
-
-            if isinstance(exception, ClientError):
-                if exception.code == 429:
-                    delay = self._extract_retry_delay(exception)
-                    logger.debug(
-                        f"Rate limit hit, sleeping for {delay} seconds as "
-                        + "suggested by API"
-                    )
-                    return delay
-
-        # Default delay for other cases
-        return DEFAULT_WAIT_TIME
-
     def _ai_retry_handler(self, exception: BaseException) -> bool:
         """
         This handler defines the cases when tenacity should retry
@@ -340,7 +340,7 @@ class AISubtitler:
                 self.metrics.add_metrics(throttles=1)
             else:
                 self.metrics.add_metrics(client_errors=1)
-            should_ret = self._is_recoverable_exception(exception)
+            should_ret = _is_recoverable_exception(exception)
         elif isinstance(exception, AIGenerationError):
             logger.debug(f"AI Generation error caught: {exception}")
             self.metrics.add_metrics(generation_errors=1)
@@ -529,7 +529,7 @@ class AISubtitler:
 
         for attempt in Retrying(
             retry=retry_if_exception(self._ai_retry_handler),
-            wait=self._wait_api_limit,
+            wait=_wait_api_limit,
             stop=stop_after_attempt(10),
             before_sleep=before_sleep_log(logger, logging.DEBUG),
             reraise=True,
