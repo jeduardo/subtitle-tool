@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import tenacity
 from google.genai.errors import ClientError, ServerError
-from google.genai.types import FinishReason
+from google.genai.types import BlockedReason, FinishReason
 from pydub import AudioSegment
 from tenacity import RetryCallState
 
@@ -756,7 +756,33 @@ class TestAISubtitler(unittest.TestCase):
         )
         self.assertEqual(self.subtitler.metrics.retries, expected_retries)
 
-    def test_generate_subtitles_content_flagged(self):
+    def test_generate_subtitles_input_flagged(self):
+        mock_client = Mock()
+        self.subtitler.client = mock_client
+
+        mock_response = Mock()
+        mock_response.usage_metadata = Mock()
+        mock_response.usage_metadata.prompt_token_count = 10
+        mock_response.usage_metadata.candidates_token_count = 20
+        mock_response.usage_metadata.thoughts_token_count = 5
+        mock_candidate = Mock()
+        mock_response.candidates = []
+        mock_feedback = Mock()
+        mock_response.prompt_feedback = mock_feedback
+        mock_response.parsed = "not a list"  # Simulate wrong type
+        mock_candidate.finish_reason = FinishReason.PROHIBITED_CONTENT
+        mock_feedback.block_reason = BlockedReason.PROHIBITED_CONTENT
+
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_file_ref = Mock()
+        mock_file_ref.name = "files/test_upload_id"
+
+        with self.assertRaises(SubtitleValidationError):
+            self.subtitler._generate_subtitles(0, mock_file_ref)
+            self.fail("Should not get here")
+
+    def test_generate_subtitles_output_flagged(self):
         mock_client = Mock()
         self.subtitler.client = mock_client
 

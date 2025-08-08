@@ -7,6 +7,7 @@ from threading import Lock
 from google import genai
 from google.genai.errors import ClientError, ServerError
 from google.genai.types import (
+    BlockedReason,
     File,
     FinishReason,
     GenerateContentConfig,
@@ -215,9 +216,9 @@ class AISubtitler:
     system_prompt: str = """
         # YOUR ROLE
         - You work as a transcriber of audio clips for English, delivering perfect transcriptions.
-        - You know many languages, are you are able to recognize the language being spoken and write the subtitle accordingly.
-        - The summary of your work is that you take an audio file and output a high-quality, perfect transcription.
-        - You strictly follow the JSON format specified and your output is only the subtitle content in this JSON format.
+        - You know many languages,  and you can recognize the language spoken in the audio and write the subtitle accordingly.
+        - Your work is to take an audio file and output a high-quality, perfect transcription synchronized with spoken dialogue,
+        - You strictly follow the JSON format specified, and your output is only the subtitle content in this JSON format.
         - You *DO NOT* subtitle music or music moods.
         - You *NEVER* generate a subtitle that ends after the audio clip.
         - You *ALWAYS* check your work before delivering it.
@@ -601,18 +602,31 @@ class AISubtitler:
                     if isinstance(response.parsed, list):
                         ret = response.parsed
                     else:
+                        # For content flagged as prohibited, we want to
+                        # trigger the temperature-raising error correction
+                        # to see if it helps.
                         for candidate in response.candidates or []:
                             if (
                                 candidate.finish_reason
                                 == FinishReason.PROHIBITED_CONTENT
                             ):
                                 logger.debug(
-                                    "Content flagged as prohibited, raising error"
+                                    "Output flagged as prohibited, raising error"
                                 )
                                 raise SubtitleValidationError(
-                                    "Content flagged as prohibited"
+                                    "Output flagged as prohibited"
                                 )
                         logger.debug(f"Parsed response is not a list: {response}")
+
+                        if (
+                            response.prompt_feedback
+                            and response.prompt_feedback.block_reason
+                            == BlockedReason.PROHIBITED_CONTENT
+                        ):
+                            logger.debug("Input flagged as prohibited, raising error")
+                            raise SubtitleValidationError("Input flagged as prohibited")
+
+                        # Otherwise raise a generic error
                         raise AIGenerationError("Parsed response is not a list")
                 else:
                     logger.debug("Response is empty")
