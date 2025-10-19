@@ -565,8 +565,8 @@ class AISubtitler:
                             temperature=temp,
                             top_k=50,
                             http_options=HttpOptions(
-                                timeout=2 * 60 * 1000
-                            ),  # 2 minutes
+                                timeout=5 * 60 * 1000
+                            ),  # 5 minutes
                             response_mime_type="application/json",
                             response_schema=list[SubtitleEvent],
                             thinking_config=ThinkingConfig(thinking_budget=24576),
