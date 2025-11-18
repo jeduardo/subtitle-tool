@@ -204,19 +204,23 @@ class AISubtitler:
         temperature (float): model temperature
         temperature_adj (float): by how much the model temperature will be
             adjusted for retries after incorrect content generation.
+        media_lang (str): Media language
+        subtitle_lang (str): Subtitle language
         system_prompt (str): system prompt driving the model. There is
             a default prompt already provided, override only if necessary.
     """
 
     model_name: str
     api_key: str
+    subtitle_lang: str
+    media_lang: str = "English"
     delete_temp_files: bool = True
     temperature: float = 0.1
     temperature_adj: float = 0.01
     system_prompt: str = """
         # YOUR ROLE
-        - You work as a transcriber of audio clips for English, delivering perfect transcriptions.
-        - You know many languages,  and you can recognize the language spoken in the audio and write the subtitle accordingly.
+        - You work as a transcriber of audio clips in %s %s, delivering perfect transcriptions %s.
+        - You know many languages, and you can recognize the language spoken in the audio and write the subtitle accordingly.
         - Your work is to take an audio file and output a high-quality, perfect transcription synchronized with spoken dialogue,
         - You strictly follow the JSON format specified, and your output is only the subtitle content in this JSON format.
         - You *DO NOT* subtitle music or music moods.
@@ -298,6 +302,16 @@ class AISubtitler:
     def __post_init__(self):
         self.client = genai.Client(api_key=self.api_key)
         self.metrics = OperationMetrics()
+        subtitle_lang_prompt = ""
+        subtitle_lang_directive = ""
+        if self.subtitle_lang != "":
+            subtitle_lang_prompt = f"to {self.subtitle_lang}"
+            subtitle_lang_directive = f"in {self.subtitle_lang}"
+        self.system_prompt = self.system_prompt % (
+            self.media_lang,
+            subtitle_lang_prompt,
+            subtitle_lang_directive,
+        )
 
     def _ai_retry_handler(self, exception: BaseException) -> bool:
         """
@@ -554,6 +568,8 @@ class AISubtitler:
                     ]
 
                     user_prompt = f"Create subtitles for this audio file that has a duration of {duration} milliseconds"  # noqa: E501
+                    logger.debug(f"User prompt: {user_prompt}")
+                    logger.debug(f"System prompt: {self.system_prompt}")
 
                     response = self.client.models.generate_content(
                         model=self.model_name,
