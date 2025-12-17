@@ -304,7 +304,7 @@ class AISubtitler:
         self.metrics = OperationMetrics()
         subtitle_lang_prompt = ""
         subtitle_lang_directive = ""
-        if self.subtitle_lang != "":
+        if self.subtitle_lang:
             subtitle_lang_prompt = f"to {self.subtitle_lang}"
             subtitle_lang_directive = f"in {self.subtitle_lang}"
         self.system_prompt = self.system_prompt % (
