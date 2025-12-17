@@ -125,6 +125,10 @@ def setup_logging(verbose=False, debug=False):
     default=5,
     show_default=True,
 )
+@click.option(
+    "--media-lang", help="Media file language", type=click.STRING, default="English"
+)
+@click.option("--subtitle-lang", help="Language for subtitle output", type=click.STRING)
 def main(
     mediafile: Path,
     api_key: str,
@@ -135,6 +139,8 @@ def main(
     keep_temp_files: bool,
     audio_segment_length: int,
     parallel_segments: int,
+    media_lang: str,
+    subtitle_lang: str,
 ) -> None:
     """Generate subtitles for a media file"""
     setup_logging(debug=debug, verbose=verbose)
@@ -172,7 +178,11 @@ def main(
         click.echo(f"Generating subtitles with {ai_model}...")
 
         subtitler = AISubtitler(
-            api_key=api_key, model_name=ai_model, delete_temp_files=not keep_temp_files
+            api_key=api_key,
+            model_name=ai_model,
+            delete_temp_files=not keep_temp_files,
+            media_lang=media_lang,
+            subtitle_lang=subtitle_lang,
         )
 
         executor = ThreadPoolExecutor(max_workers=parallel_segments)
