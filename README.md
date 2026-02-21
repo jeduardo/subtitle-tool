@@ -2,7 +2,7 @@
 
 [![codecov](https://codecov.io/gh/jeduardo/subtitle-tool/graph/badge.svg?token=TPA3UXF5OC)](https://codecov.io/gh/jeduardo/subtitle-tool)
 
-This utility uses Google Gemini to generate subtitles to audio and video files.
+This utility uses local Apple MLX Voxtral models to generate subtitles for audio and video files.
 
 ## Dependencies
 
@@ -11,14 +11,11 @@ This utility uses Google Gemini to generate subtitles to audio and video files.
 ## Process
 
 1. Extract the audio from the video
-2. Send the audio to Gemini for transcription
+2. Send the audio to a local MLX Voxtral model for transcription
 3. Backup the existing subtitle
 4. Save the new subtitle
 
 ## Dependencies
-
-- Export the API key for Gemini to the environment variable `GEMINI_API_KEY`
-  **or** specify it in the command line with the flag `--api-key`.
 
 - `ffmpeg` needs to be installed (`brew install ffmpeg`, `apt-get install ffmpeg` or `dnf install ffmpeg`)
 
@@ -57,9 +54,11 @@ Usage: subtitle-tool [OPTIONS] MEDIAFILE
   Generate subtitles for a media file
 
 Options:
-  --api-key TEXT                  Google Gemini API key
-  -m, --ai-model TEXT             Gemini model to use  [default:
-                                  gemini-2.5-flash]
+  --api-key TEXT                  Unused for local MLX mode (kept for
+                                  compatibility)
+  -m, --ai-model TEXT             Local MLX Voxtral model repo/path to use
+                                  [default:
+                                  mistralai/Voxtral-Mini-3B-2507]
   -s, --subtitle-path TEXT        Subtitle file name [default: MEDIAFILE.srt]
   -v, --verbose                   Enable debug logging for subtitle_tool
                                   modules

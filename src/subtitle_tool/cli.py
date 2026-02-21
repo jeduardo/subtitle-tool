@@ -19,8 +19,8 @@ from subtitle_tool.subtitles import (
     merge_subtitle_events,
 )
 
-API_KEY_NAME = "GEMINI_API_KEY"
-AI_DEFAULT_MODEL = "gemini-2.5-flash"
+API_KEY_NAME = "SUBTITLE_TOOL_API_KEY"
+AI_DEFAULT_MODEL = "mistralai/Voxtral-Mini-3B-2507"
 
 
 def setup_logging(verbose=False, debug=False):
@@ -70,14 +70,14 @@ def setup_logging(verbose=False, debug=False):
     "--api-key",
     envvar=API_KEY_NAME,
     type=click.STRING,
-    help="Google Gemini API key",
+    help="Unused for local MLX mode (kept for compatibility)",
 )
 @click.option(
     "-m",
     "--ai-model",
     type=click.STRING,
     default=AI_DEFAULT_MODEL,
-    help="Gemini model to use",
+    help="Local MLX Voxtral model repo/path to use",
     show_default=True,
 )
 @click.option(
@@ -147,12 +147,6 @@ def main(
 
     start = time.time()
 
-    if not api_key:
-        raise click.MissingParameter(
-            "API key not informed with --api-key or not present "
-            + "in the environment variable {API_KEY_NAME}"
-        )
-
     click.echo(f"Generating subtitles for {mediafile}")
 
     executor = None
@@ -174,7 +168,7 @@ def main(
         )
         click.echo(f"Audio split into {len(segments)} segments")
 
-        # 3. Ask Gemini to create subtitles
+        # 3. Ask local MLX model to create subtitles
         click.echo(f"Generating subtitles with {ai_model}...")
 
         subtitler = AISubtitler(

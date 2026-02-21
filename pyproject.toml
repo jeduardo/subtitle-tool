@@ -1,7 +1,7 @@
 [project]
 name = "subtitle-tool"
 version = "0.1.56"
-description = "A tool for generating subtitles using Google Gemini models."
+description = "A tool for generating subtitles using local Apple MLX models."
 license = "MIT"
 keywords = [
     "cli",
@@ -10,8 +10,8 @@ keywords = [
     "video",
     "audio",
     "ai",
-    "google-gemini",
-    "gemini",
+    "mlx",
+    "voxtral",
 ]
 authors = [{ name = "J. Eduardo", email = "contact@jeduardo.com" }]
 readme = "README.md"
@@ -20,12 +20,13 @@ dependencies = [
     "audioop-lts>=0.2.1",
     "click>=8.2.1",
     "ffmpeg-python>=0.2.0",
-    "google-genai>=1.16.1",
     "humanize>=4.12.3",
+    "mlx-voxtral>=0.0.4",
     "pydub>=0.25.1",
     "pysubs2>=1.8.0",
     "srt-equalizer>=0.1.10",
     "tenacity>=9.1.2",
+    "transformers>=4.56.1",
 ]
 
 classifiers = [
