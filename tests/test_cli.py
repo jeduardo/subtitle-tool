@@ -96,6 +96,67 @@ class TestMainCommand(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("API key not informed", result.output)
 
+    def test_missing_api_key_gemini_shortcut(self):
+        """Test that --gemini still requires API key"""
+        os.environ.pop(API_KEY_NAME, None)
+        result = self.runner.invoke(main, ["--gemini", str(self.test_video_path)])
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("API key not informed", result.output)
+
+    @patch.object(AudioSplitter, "split_audio")
+    @patch.object(ThreadPoolExecutor, "map")
+    @patch("subtitle_tool.cli.AISubtitler")
+    @patch("subtitle_tool.cli.events_to_subtitles")
+    @patch("subtitle_tool.cli.equalize_subtitles")
+    @patch("subtitle_tool.cli.merge_subtitle_events")
+    @patch.object(SSAFile, "to_file")
+    @patch("subtitle_tool.cli.extract_audio")
+    def test_voxtral_engine_without_api_key(
+        self,
+        mock_extract_audio,
+        mock_to_file,
+        mock_merge_subtitle_events,
+        mock_equalize_subtitles,
+        mock_events_to_subtitles,
+        mock_ai_subtitler,
+        mock_map,
+        mock_split_audio,
+    ):
+        """Test that local engines don't require API key and default model resolves"""
+        mock_audio_segment = Mock()
+        mock_audio_segment.duration_seconds = 10.0
+        mock_extract_audio.return_value = mock_audio_segment
+
+        mock_segment = Mock(duration_seconds=10.0)
+        mock_split_audio.return_value = [mock_segment]
+
+        mock_map.return_value = [
+            [SubtitleEvent(start=0, end=1000, text="Hello local engine")]
+        ]
+        mock_merge_subtitle_events.return_value = [
+            SubtitleEvent(start=0, end=1000, text="Hello local engine")
+        ]
+        mock_events_to_subtitles.return_value = SSAFile()
+        mock_equalize_subtitles.return_value = SSAFile()
+        mock_to_file.return_value = None
+
+        with patch("builtins.open", mock_open()):
+            result = self.runner.invoke(
+                main,
+                [
+                    "--engine",
+                    "voxtral",
+                    str(self.test_video_path),
+                ],
+            )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("Subtitles saved at", result.output)
+
+        _, kwargs = mock_ai_subtitler.call_args
+        self.assertEqual(kwargs["engine"], "voxtral")
+        self.assertEqual(kwargs["model_name"], "mistralai/Voxtral-Mini-3B-2507")
+
     def test_missing_media_file_arguments(self):
         """Test that missing both video and audio arguments raises error"""
         result = self.runner.invoke(main, ["--api-key", "test_key"])

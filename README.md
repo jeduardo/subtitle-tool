@@ -2,7 +2,10 @@
 
 [![codecov](https://codecov.io/gh/jeduardo/subtitle-tool/graph/badge.svg?token=TPA3UXF5OC)](https://codecov.io/gh/jeduardo/subtitle-tool)
 
-This utility uses local Apple MLX Voxtral models to generate subtitles for audio and video files.
+This utility can generate subtitles with three engines:
+- Google Gemini (cloud)
+- local MLX Voxtral
+- local MLX Whisper
 
 ## Dependencies
 
@@ -11,13 +14,15 @@ This utility uses local Apple MLX Voxtral models to generate subtitles for audio
 ## Process
 
 1. Extract the audio from the video
-2. Send the audio to a local MLX Voxtral model for transcription
+2. Send the audio to the selected transcription engine
 3. Backup the existing subtitle
 4. Save the new subtitle
 
 ## Dependencies
 
 - `ffmpeg` needs to be installed (`brew install ffmpeg`, `apt-get install ffmpeg` or `dnf install ffmpeg`)
+
+- For `--engine gemini`, provide `GEMINI_API_KEY` or `--api-key`.
 
 - Ensure `uv` installs its dev dependencies with `uv sync --extra dev`.
 
@@ -46,6 +51,21 @@ subtitle-tool video.avi
 subtitle-tool audio.mp3
 ```
 
+- Explicit engine examples:
+
+```shell
+# Local Voxtral
+subtitle-tool --engine voxtral video.avi
+
+# Local MLX Whisper (modern default model)
+subtitle-tool --engine whisper-mlx video.avi
+
+# Gemini cloud
+subtitle-tool --engine gemini --api-key "$GEMINI_API_KEY" video.avi
+# or shortcut
+subtitle-tool --gemini --api-key "$GEMINI_API_KEY" video.avi
+```
+
 - Usage options:
 
 ```text
@@ -54,11 +74,13 @@ Usage: subtitle-tool [OPTIONS] MEDIAFILE
   Generate subtitles for a media file
 
 Options:
-  --api-key TEXT                  Unused for local MLX mode (kept for
-                                  compatibility)
-  -m, --ai-model TEXT             Local MLX Voxtral model repo/path to use
-                                  [default:
-                                  mistralai/Voxtral-Mini-3B-2507]
+  --api-key TEXT                  Google Gemini API key (required only for
+                                  engine=gemini)
+  --engine [gemini|voxtral|whisper-mlx]
+                                  Transcription engine to use  [default:
+                                  gemini]
+  --gemini                        Shortcut for --engine gemini
+  -m, --ai-model TEXT             Model to use (defaults depend on --engine)
   -s, --subtitle-path TEXT        Subtitle file name [default: MEDIAFILE.srt]
   -v, --verbose                   Enable debug logging for subtitle_tool
                                   modules

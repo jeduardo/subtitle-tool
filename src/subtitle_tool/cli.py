@@ -11,7 +11,7 @@ from pathlib import Path
 import click
 from humanize.time import precisedelta
 
-from subtitle_tool.ai import AISubtitler
+from subtitle_tool.ai import SUPPORTED_ENGINES, AISubtitler
 from subtitle_tool.audio import AudioExtractionError, AudioSplitter, extract_audio
 from subtitle_tool.subtitles import (
     equalize_subtitles,
@@ -19,8 +19,13 @@ from subtitle_tool.subtitles import (
     merge_subtitle_events,
 )
 
-API_KEY_NAME = "SUBTITLE_TOOL_API_KEY"
-AI_DEFAULT_MODEL = "mistralai/Voxtral-Mini-3B-2507"
+GEMINI_API_KEY_NAME = "GEMINI_API_KEY"
+API_KEY_NAME = GEMINI_API_KEY_NAME
+ENGINE_DEFAULT_MODEL = {
+    "gemini": "gemini-2.5-flash",
+    "voxtral": "mistralai/Voxtral-Mini-3B-2507",
+    "whisper-mlx": "mlx-community/whisper-large-v3-turbo",
+}
 
 
 def setup_logging(verbose=False, debug=False):
@@ -41,17 +46,12 @@ def setup_logging(verbose=False, debug=False):
     root_logger.addHandler(handler)
 
     if debug:
-        # Debug flag: enable DEBUG for everything (root level)
         root_logger.setLevel(logging.DEBUG)
     elif verbose:
-        # Verbose flag: enable DEBUG only for subtitle_tool loggers
         root_logger.setLevel(logging.ERROR)
-
-        # Set DEBUG level for all subtitle_tool loggers
         subtitle_logger = logging.getLogger("subtitle_tool")
         subtitle_logger.setLevel(logging.DEBUG)
     else:
-        # Normal operation
         root_logger.setLevel(logging.ERROR)
 
 
@@ -68,17 +68,29 @@ def setup_logging(verbose=False, debug=False):
 )
 @click.option(
     "--api-key",
-    envvar=API_KEY_NAME,
+    envvar=GEMINI_API_KEY_NAME,
     type=click.STRING,
-    help="Unused for local MLX mode (kept for compatibility)",
+    help="Google Gemini API key (required only for engine=gemini)",
+)
+@click.option(
+    "--engine",
+    type=click.Choice(SUPPORTED_ENGINES),
+    default="gemini",
+    show_default=True,
+    help="Transcription engine to use",
+)
+@click.option(
+    "--gemini",
+    is_flag=True,
+    default=False,
+    help="Shortcut for --engine gemini",
 )
 @click.option(
     "-m",
     "--ai-model",
     type=click.STRING,
-    default=AI_DEFAULT_MODEL,
-    help="Local MLX Voxtral model repo/path to use",
-    show_default=True,
+    default=None,
+    help="Model to use (defaults depend on --engine)",
 )
 @click.option(
     "-s",
@@ -132,7 +144,9 @@ def setup_logging(verbose=False, debug=False):
 def main(
     mediafile: Path,
     api_key: str,
-    ai_model: str,
+    engine: str,
+    gemini: bool,
+    ai_model: str | None,
     subtitle_path: str,
     verbose: bool,
     debug: bool,
@@ -143,9 +157,19 @@ def main(
     subtitle_lang: str,
 ) -> None:
     """Generate subtitles for a media file"""
+
     setup_logging(debug=debug, verbose=verbose)
 
     start = time.time()
+
+    selected_engine = "gemini" if gemini else engine
+    selected_model = ai_model or ENGINE_DEFAULT_MODEL[selected_engine]
+
+    if selected_engine == "gemini" and not api_key:
+        raise click.MissingParameter(
+            "API key not informed with --api-key or not present "
+            + f"in the environment variable {GEMINI_API_KEY_NAME}"
+        )
 
     click.echo(f"Generating subtitles for {mediafile}")
 
@@ -158,7 +182,6 @@ def main(
             raise click.ClickException(f"Error loading audio stream: {e}") from e
         click.echo(f"Audio loaded ({precisedelta(int(audio_stream.duration_seconds))})")
 
-        # 2. Split the audio stream into 30-second segments
         click.echo(
             f"Segmenting audio stream in {audio_segment_length} "
             + f"{'second' if audio_segment_length <= 1 else 'seconds'} chunks..."
@@ -168,15 +191,17 @@ def main(
         )
         click.echo(f"Audio split into {len(segments)} segments")
 
-        # 3. Ask local MLX model to create subtitles
-        click.echo(f"Generating subtitles with {ai_model}...")
+        click.echo(
+            f"Generating subtitles with {selected_model} ({selected_engine})..."
+        )
 
         subtitler = AISubtitler(
             api_key=api_key,
-            model_name=ai_model,
+            model_name=selected_model,
             delete_temp_files=not keep_temp_files,
             media_lang=media_lang,
             subtitle_lang=subtitle_lang,
+            engine=selected_engine,
         )
 
         executor = ThreadPoolExecutor(max_workers=parallel_segments)
@@ -197,16 +222,13 @@ def main(
             executor.shutdown(wait=False, cancel_futures=True)
             raise click.Abort() from e
 
-        # 4. Join all subtitles into a single one
         segment_durations = [segment.duration_seconds * 1000 for segment in segments]
         subtitle_events = merge_subtitle_events(subtitle_groups, segment_durations)
 
-        # 5. Convert subtitle events into subtitle file
         ai_subtitles = events_to_subtitles(subtitle_events)
         subtitles = equalize_subtitles(ai_subtitles)
         click.echo("New subtitle adjusted for viewing")
 
-        # 6. Backup existing subtitle (if exists)
         if not subtitle_path:
             subtitle_path = f"{mediafile.parent}/{mediafile.stem}.srt"
 
@@ -215,11 +237,9 @@ def main(
             shutil.move(subtitle_path, dst)
             click.echo(f"Existing subtitle backed up to {dst}")
 
-        # 7. Write AI response
         with open(subtitle_path, "w") as f:
             subtitles.to_file(f, "srt")
 
-        # 8. Output processing info
         end = time.time()
         duration = timedelta(seconds=round(end - start, 2))
         metrics = subtitler.metrics
@@ -241,7 +261,6 @@ def main(
         click.echo(f"Subtitles saved at {subtitle_path}")
 
     except click.ClickException:
-        # Re-raise them for click to handle
         raise
     except Exception as e:
         click.echo(f"Internal error: {e!r}", err=True)
