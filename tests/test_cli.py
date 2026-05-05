@@ -16,7 +16,7 @@ from pydub.generators import WhiteNoise
 from pysubs2 import SSAFile
 
 from subtitle_tool.audio import AudioExtractionError, AudioSplitter
-from subtitle_tool.cli import API_KEY_NAME, main, setup_logging
+from subtitle_tool.cli import GEMINI_API_KEY_NAME, main, setup_logging
 from subtitle_tool.subtitles import SubtitleEvent
 
 
@@ -91,7 +91,7 @@ class TestMainCommand(unittest.TestCase):
 
     def test_missing_api_key(self):
         """Test that missing API key raises proper error"""
-        os.environ.pop(API_KEY_NAME, None)
+        os.environ.pop(GEMINI_API_KEY_NAME, None)
         result = self.runner.invoke(main, [str(self.test_video_path)])
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("API key not informed", result.output)

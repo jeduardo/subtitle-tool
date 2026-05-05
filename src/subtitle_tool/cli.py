@@ -19,8 +19,8 @@ from subtitle_tool.subtitles import (
     merge_subtitle_events,
 )
 
-API_KEY_NAME = "GEMINI_API_KEY"
-AI_DEFAULT_MODEL = "gemini-2.5-flash"
+GEMINI_API_KEY_NAME = "GEMINI_API_KEY"
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 def setup_logging(verbose=False, debug=False):
@@ -68,7 +68,7 @@ def setup_logging(verbose=False, debug=False):
 )
 @click.option(
     "--api-key",
-    envvar=API_KEY_NAME,
+    envvar=GEMINI_API_KEY_NAME,
     type=click.STRING,
     help="Google Gemini API key",
 )
@@ -76,7 +76,7 @@ def setup_logging(verbose=False, debug=False):
     "-m",
     "--ai-model",
     type=click.STRING,
-    default=AI_DEFAULT_MODEL,
+    default=GEMINI_DEFAULT_MODEL,
     help="Gemini model to use",
     show_default=True,
 )
