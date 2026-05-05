@@ -9,9 +9,9 @@ from google.genai.types import BlockedReason, FinishReason
 from pydub import AudioSegment
 from tenacity import RetryCallState
 
-from subtitle_tool.ai import (
+from subtitle_tool.ai.gemini import (
     AIGenerationError,
-    AISubtitler,
+    GeminiSubtitler,
     _is_recoverable_exception,
     _wait_api_limit,
 )
@@ -171,7 +171,9 @@ SERVER_ERROR_503_UNAVAILABLE = """
 
 class TestIsRecoverable(unittest.TestCase):
     def setUp(self) -> None:
-        self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
+        self.subtitler = GeminiSubtitler(
+            api_key="test-api-key", model_name="test-model"
+        )
 
     def test_client_rate_limit_per_minute(self):
         error = ClientError(
@@ -208,7 +210,9 @@ class TestIsRecoverable(unittest.TestCase):
 
 class TestWaitApiLimit(unittest.TestCase):
     def setUp(self) -> None:
-        self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
+        self.subtitler = GeminiSubtitler(
+            api_key="test-api-key", model_name="test-model"
+        )
 
     def test_client_rate_limit_per_minute(self):
         error = ClientError(
@@ -315,7 +319,9 @@ class TestWaitApiLimit(unittest.TestCase):
 
 class TestRetryHandler(unittest.TestCase):
     def setUp(self) -> None:
-        self.subtitler = AISubtitler(api_key="test-api-key", model_name="test-model")
+        self.subtitler = GeminiSubtitler(
+            api_key="test-api-key", model_name="test-model"
+        )
 
     def test_client_rate_limit_per_minute(self):
         error = ClientError(
@@ -351,7 +357,7 @@ class TestRetryHandler(unittest.TestCase):
         self.assertTrue(result)
 
 
-class TestAISubtitler(unittest.TestCase):
+class TestGeminiSubtitler(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.mock_audio_segment = Mock(spec=AudioSegment)
@@ -359,7 +365,7 @@ class TestAISubtitler(unittest.TestCase):
         self.api_key = "test_api_key"
 
         # Instantiate the actual class
-        self.subtitler = AISubtitler(
+        self.subtitler = GeminiSubtitler(
             api_key=self.api_key, model_name="test_model", delete_temp_files=True
         )
 
@@ -593,7 +599,7 @@ class TestAISubtitler(unittest.TestCase):
         mock_client.files.delete.side_effect = Exception("Deletion failed unexpectedly")
 
         # Patch the logger to capture warnings
-        with patch("subtitle_tool.ai.logger.warning") as mock_logger_warning:
+        with patch("subtitle_tool.ai.gemini.logger.warning") as mock_logger_warning:
             # The context manager should not raise an exception
             with self.subtitler.upload_audio(self.mock_audio_segment):
                 pass  # Simulate normal operation within the context
@@ -841,7 +847,7 @@ class TestMetrics(unittest.TestCase):
         self.mock_response_usage_metadata.candidates_token_count = 2000
 
         # Instantiate the actual class
-        self.subtitler = AISubtitler(
+        self.subtitler = GeminiSubtitler(
             api_key=self.api_key, model_name="test_model", delete_temp_files=True
         )
 
